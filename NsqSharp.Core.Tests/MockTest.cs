@@ -43,18 +43,18 @@ namespace NsqSharp.Tests
             var script = new[]
                          {
                              // SUB
-                             new instruction(0, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
                              // IDENTIFY
-                             new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgBad)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgBad)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgBad)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgBad)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(200 * Millisecond, -1, "exit")
+                             new instruction(TimeSpan.FromMilliseconds(200), -1, "exit")
                          };
             var n = new mockNSQD(script, IPAddress.Loopback);
 
@@ -132,14 +132,14 @@ namespace NsqSharp.Tests
             var script = new[]
                          {
                              // SUB
-                             new instruction(0, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
                              // IDENTIFY
-                             new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeueNoBackoff)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgRequeueNoBackoff)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Millisecond, -1, "exit")
+                             new instruction(TimeSpan.FromMilliseconds(100), -1, "exit")
                          };
 
             var n = new mockNSQD(script, IPAddress.Loopback);
@@ -207,15 +207,15 @@ namespace NsqSharp.Tests
             var script = new[]
                          {
                              // SUB
-                             new instruction(0, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
                              // IDENTIFY
-                             new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Millisecond, -1, "exit")
+                             new instruction(TimeSpan.FromMilliseconds(100), -1, "exit")
                          };
 
             var n = new mockNSQD(script, IPAddress.Loopback);
@@ -277,13 +277,13 @@ namespace NsqSharp.Tests
             script = new[]
                          {
                              // SUB
-                             new instruction(0, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
                              // IDENTIFY
-                             new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.Zero, FrameType.Response, "OK"),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
+                             new instruction(TimeSpan.FromMilliseconds(20), FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Millisecond, -1, "exit")
+                             new instruction(TimeSpan.FromMilliseconds(100), -1, "exit")
                          };
 
             n = new mockNSQD(script, IPAddress.Loopback, n.listenPort);
@@ -363,24 +363,24 @@ namespace NsqSharp.Tests
         public int frameType { get; set; }
         public byte[] body { get; set; }
 
-        public instruction(long delay, int frameType, byte[] body)
+        public instruction(TimeSpan delay, int frameType, byte[] body)
         {
-            this.delay = TimeSpan.FromMilliseconds(delay);
+            this.delay = delay;
             this.frameType = frameType;
             this.body = body;
         }
 
-        public instruction(long delay, int frameType, string body)
+        public instruction(TimeSpan delay, int frameType, string body)
             : this(delay, frameType, Encoding.UTF8.GetBytes(body))
         {
         }
 
-        public instruction(long delay, FrameType frameType, byte[] body)
+        public instruction(TimeSpan delay, FrameType frameType, byte[] body)
             : this(delay, (int)frameType, body)
         {
         }
 
-        public instruction(long delay, FrameType frameType, string body)
+        public instruction(TimeSpan delay, FrameType frameType, string body)
             : this(delay, (int)frameType, Encoding.UTF8.GetBytes(body))
         {
         }
@@ -474,7 +474,7 @@ namespace NsqSharp.Tests
                                        // trim the '\n'
                                        line = line.Take(line.Length - 1).ToArray();
                                        readChan.Writer.TryWrite(line);
-                                       _ = readDoneChan.Reader.ReadAsync().Result;
+                                       _ = readDoneChan.Reader.ReadAsync().AsTask().Result;
                                    }
                                    catch
                                    {

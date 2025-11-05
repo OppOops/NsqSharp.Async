@@ -176,7 +176,7 @@ namespace NsqSharp.Tests
                 Assert.Throws<ErrNotConnected>(() => q.DisconnectFromNsqd("1.2.3.4:4150"),
                     "should not be able to disconnect from an unknown nsqd");
 
-                Assert.Throws<TimeoutException>(() => q.ConnectToNsqd("1.2.3.4:4150"),
+                Assert.Throws<OperationCanceledException>(() => q.ConnectToNsqd("1.2.3.4:4150"),
                     "should not be able to connect to non-existent nsqd");
 
                 // should be able to disconnect from an nsqd
@@ -206,7 +206,7 @@ namespace NsqSharp.Tests
             var w = new Producer("127.0.0.1:4150");
             if (method == "put")
             {
-                w.Publish(topic, body);
+                w.Publish(topic, body, fireAndForgot: false);
             }
             else if (method == "mput")
             {
@@ -229,7 +229,7 @@ namespace NsqSharp.Tests
                 mpub.Add(ms.ToArray());
                 ms.Dispose();
 
-                w.MultiPublish(topic, mpub);
+                w.MultiPublish(topic, mpub, fireAndForgot:false);
             }
             w.Stop();
         }

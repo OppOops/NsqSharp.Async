@@ -94,7 +94,7 @@ namespace NsqSharp.Tests
                     wg.Add(1);
                     GoFunc.Run(() =>
                     {
-                        _ = startCh.Reader.WaitToReadAsync().Result;
+                        _ = startCh.Reader.WaitToReadAsync().AsTask().Result;
                         for (int i = 0; i < benchmarkNum / parallel; i++)
                         {
                             p.Publish(topicName, body);
@@ -152,7 +152,7 @@ namespace NsqSharp.Tests
                     wg.Add(1);
                     GoFunc.Run(() =>
                     {
-                        _ = startCh.Reader.WaitToReadAsync().Result;
+                        _ = startCh.Reader.WaitToReadAsync().AsTask().Result;
                         for (int i = 0; i < benchmarkNum / parallel; i++)
                         {
                             _nsqdHttpClient.Publish(topicName, body);

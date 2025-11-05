@@ -43,7 +43,7 @@ namespace NsqSharp.Tests
                 var config = new Config();
                 var w = new Producer("127.0.0.1:4150", new ConsoleLogger(LogLevel.Debug), config);
 
-                w.Publish(topicName, "test");
+                w.Publish(topicName, "test", fireAndForgot: false);
 
                 w.Stop();
 
@@ -203,7 +203,7 @@ namespace NsqSharp.Tests
 
             try
             {
-                ErrIdentify errIdentify = Assert.Throws<ErrIdentify>(() => w.Publish(topicName, "publish_test_case"));
+                ErrIdentify errIdentify = Assert.Throws<ErrIdentify>(() => w.Publish(topicName, "publish_test_case", fireAndForgot: false));
 
                 Assert.AreEqual("E_BAD_BODY IDENTIFY heartbeat interval (100) is invalid", errIdentify.Reason);
             }
