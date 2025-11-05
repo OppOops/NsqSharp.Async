@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Channels;
 using NsqSharp.Core;
 using NsqSharp.Tests.Utils.Extensions;
 using NsqSharp.Utils;
@@ -45,31 +46,35 @@ namespace NsqSharp.Tests
                              new instruction(0, FrameType.Response, "OK"),
                              // IDENTIFY
                              new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgBad)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgBad)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgBad)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgBad)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(200 * Time.Millisecond, -1, "exit")
+                             new instruction(200 * Millisecond, -1, "exit")
                          };
             var n = new mockNSQD(script, IPAddress.Loopback);
 
             var topicName = "test_consumer_commands" + DateTime.Now.Unix();
             var config = new Config();
             config.MaxInFlight = 5;
-            config.BackoffMultiplier = Time.Duration(10 * Time.Millisecond);
+            config.BackoffMultiplier = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
             q.ConnectToNsqd(n.tcpAddr);
 
             bool timeout = false;
-            Select
-                .CaseReceive(n.exitChan, o => { })
-                .CaseReceive(Time.After(TimeSpan.FromMilliseconds(5000)), o => { timeout = true; })
-                .NoDefault();
+            Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5000));
+                if(n.exitChan.Task.IsCompleted == false)
+                {
+                    timeout = true;
+                }
+            }).Wait();
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -111,6 +116,8 @@ namespace NsqSharp.Tests
             Assert.AreEqual(expected, actual);
         }
 
+        private const long Millisecond = 1_000_000;
+
         [Test]
         public void TestConsumerRequeueNoBackoff()
         {
@@ -128,11 +135,11 @@ namespace NsqSharp.Tests
                              new instruction(0, FrameType.Response, "OK"),
                              // IDENTIFY
                              new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgRequeueNoBackoff)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeueNoBackoff)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Time.Millisecond, -1, "exit")
+                             new instruction(100 * Millisecond, -1, "exit")
                          };
 
             var n = new mockNSQD(script, IPAddress.Loopback);
@@ -140,16 +147,20 @@ namespace NsqSharp.Tests
             var topicName = "test_requeue" + DateTime.Now.Unix();
             var config = new Config();
             config.MaxInFlight = 1;
-            config.BackoffMultiplier = Time.Duration(10 * Time.Millisecond);
+            config.BackoffMultiplier = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
             q.ConnectToNsqd(n.tcpAddr);
 
             bool timeout = false;
-            Select
-                .CaseReceive(n.exitChan, o => { })
-                .CaseReceive(Time.After(TimeSpan.FromMilliseconds(500)), o => { timeout = true; })
-                .NoDefault();
+            Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5000));
+                if (n.exitChan.Task.IsCompleted == false)
+                {
+                    timeout = true;
+                }
+            }).Wait();
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -199,12 +210,12 @@ namespace NsqSharp.Tests
                              new instruction(0, FrameType.Response, "OK"),
                              // IDENTIFY
                              new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgRequeue)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgRequeue)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Time.Millisecond, -1, "exit")
+                             new instruction(100 * Millisecond, -1, "exit")
                          };
 
             var n = new mockNSQD(script, IPAddress.Loopback);
@@ -212,18 +223,22 @@ namespace NsqSharp.Tests
             var topicName = "test_backoff_disconnect" + DateTime.Now.Unix();
             var config = new Config();
             config.MaxInFlight = 5;
-            config.BackoffMultiplier = Time.Duration(10 * Time.Millisecond);
-            config.LookupdPollInterval = Time.Duration(10 * Time.Millisecond);
-            config.RDYRedistributeInterval = Time.Duration(10 * Time.Millisecond);
+            config.BackoffMultiplier = TimeSpan.FromMilliseconds(10);
+            config.LookupdPollInterval = TimeSpan.FromMilliseconds(10);
+            config.RDYRedistributeInterval = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
             q.ConnectToNsqd(n.tcpAddr);
 
             bool timeout = false;
-            Select
-                .CaseReceive(n.exitChan, o => { })
-                .CaseReceive(Time.After(TimeSpan.FromMilliseconds(500)), o => { timeout = true; })
-                .NoDefault();
+            Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5000));
+                if (n.exitChan.Task.IsCompleted == false)
+                {
+                    timeout = true;
+                }
+            }).Wait();
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -265,19 +280,23 @@ namespace NsqSharp.Tests
                              new instruction(0, FrameType.Response, "OK"),
                              // IDENTIFY
                              new instruction(0, FrameType.Response, "OK"),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
-                             new instruction(20 * Time.Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
+                             new instruction(20 * Millisecond, FrameType.Message, frameMessage(msgGood)),
                              // needed to exit test
-                             new instruction(100 * Time.Millisecond, -1, "exit")
+                             new instruction(100 * Millisecond, -1, "exit")
                          };
 
             n = new mockNSQD(script, IPAddress.Loopback, n.listenPort);
 
             bool timeout2 = false;
-            Select
-                .CaseReceive(n.exitChan, o => { })
-                .CaseReceive(Time.After(TimeSpan.FromMilliseconds(500)), o => { timeout2 = true; })
-                .NoDefault();
+            Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(5000));
+                if (n.exitChan.Task.IsCompleted == false)
+                {
+                    timeout = true;
+                }
+            }).Wait();
 
             Assert.IsFalse(timeout2, "timeout2");
 
@@ -346,7 +365,7 @@ namespace NsqSharp.Tests
 
         public instruction(long delay, int frameType, byte[] body)
         {
-            this.delay = Time.Duration(delay);
+            this.delay = TimeSpan.FromMilliseconds(delay);
             this.frameType = frameType;
             this.body = body;
         }
@@ -377,12 +396,12 @@ namespace NsqSharp.Tests
         public List<DateTime> gotTime { get; set; }
         public string tcpAddr { get; set; }
         public int listenPort { get; private set; }
-        public Chan<int> exitChan { get; set; }
+        public TaskCompletionSource<bool> exitChan { get; set; }
 
         public mockNSQD(instruction[] script, IPAddress addr, int port = 0)
         {
             this.script = script;
-            exitChan = new Chan<int>();
+            exitChan = new();
             got = new List<byte[]>();
             gotTime = new List<DateTime>();
             ipAddr = addr;
@@ -415,7 +434,19 @@ namespace NsqSharp.Tests
             }
 
             Console.WriteLine("[{0}] TCP: closing {1}", DateTime.Now.Formatted(), addr);
-            exitChan.Close();
+            exitChan.TrySetResult(true);
+        }
+
+        internal static Channel<bool> After(TimeSpan timeout)
+        {
+            var timeoutChan = Channel.CreateUnbounded<bool>();
+            Task.Run(async () =>
+            {
+                await Task.Delay(timeout);
+                timeoutChan.Writer.TryWrite(true);
+                timeoutChan.Writer.TryComplete();
+            });
+            return timeoutChan;
         }
 
         private void handle(TcpClient conn, EndPoint remoteEndPoint)
@@ -429,9 +460,9 @@ namespace NsqSharp.Tests
             {
                 rdr.ReadBytes(4);
 
-                var readChan = new Chan<byte[]>();
-                var readDoneChan = new Chan<int>();
-                var scriptTime = Time.After(script[0].delay);
+                var readChan = Channel.CreateUnbounded<byte[]>();
+                var readDoneChan = Channel.CreateUnbounded<int>();
+                var scriptTime = After(script[0].delay);
 
                 GoFunc.Run(() =>
                            {
@@ -442,8 +473,8 @@ namespace NsqSharp.Tests
                                        var line = ReadBytes(rdr, (byte)'\n');
                                        // trim the '\n'
                                        line = line.Take(line.Length - 1).ToArray();
-                                       readChan.Send(line);
-                                       readDoneChan.Receive();
+                                       readChan.Writer.TryWrite(line);
+                                       _ = readDoneChan.Reader.ReadAsync().Result;
                                    }
                                    catch
                                    {
@@ -457,79 +488,79 @@ namespace NsqSharp.Tests
 
                 while (doLoop && idx < script.Length)
                 {
-                    Select
-                        .CaseReceive(readChan, line =>
-                        {
-                            string strLine = Encoding.UTF8.GetString(line);
-                            Console.WriteLine("[{0}] mock: '{1}'", DateTime.Now.Formatted(), strLine);
-                            got.Add(line);
-                            gotTime.Add(DateTime.Now);
-                            var args = strLine.Split(' ');
-                            switch (args[0])
-                            {
-                                case "IDENTIFY":
-                                    try
-                                    {
-                                        byte[] l = rdr.ReadBytes(4);
-                                        int size = Binary.BigEndian.Int32(l);
-                                        byte[] b = rdr.ReadBytes(size);
+                    var select = Select
+                         .CaseReceive(readChan, line =>
+                         {
+                             string strLine = Encoding.UTF8.GetString(line);
+                             Console.WriteLine("[{0}] mock: '{1}'", DateTime.Now.Formatted(), strLine);
+                             got.Add(line);
+                             gotTime.Add(DateTime.Now);
+                             var args = strLine.Split(' ');
+                             switch (args[0])
+                             {
+                                 case "IDENTIFY":
+                                     try
+                                     {
+                                         byte[] l = rdr.ReadBytes(4);
+                                         int size = Binary.BigEndian.Int32(l);
+                                         byte[] b = rdr.ReadBytes(size);
 
-                                        Console.WriteLine(string.Format("[{0}] {1}",
-                                            DateTime.Now.Formatted(), Encoding.UTF8.GetString(b)));
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Console.WriteLine(ex.ToString());
-                                        doLoop = false;
-                                        throw;
-                                    }
-                                    break;
-                                case "RDY":
-                                    int rdy = int.Parse(args[1]);
-                                    rdyCount = rdy;
-                                    break;
-                            }
-                            readDoneChan.Send(1);
-                        })
-                        .CaseReceive(scriptTime, o =>
-                        {
-                            bool doWrite = true;
-                            var inst = script[idx];
-                            if (inst.body.SequenceEqual(Encoding.UTF8.GetBytes("exit")))
-                            {
-                                doLoop = false;
-                                doWrite = false;
-                            }
-                            if (inst.frameType == (int)FrameType.Message)
-                            {
-                                if (rdyCount == 0)
-                                {
-                                    Console.WriteLine("[{0}] !!! RDY == 0", DateTime.Now.Formatted());
-                                    scriptTime = Time.After(script[idx + 1].delay);
-                                    doWrite = false;
-                                }
-                                else
-                                {
-                                    rdyCount--;
-                                }
-                            }
+                                         Console.WriteLine(string.Format("[{0}] {1}",
+                                             DateTime.Now.Formatted(), Encoding.UTF8.GetString(b)));
+                                     }
+                                     catch (Exception ex)
+                                     {
+                                         Console.WriteLine(ex.ToString());
+                                         doLoop = false;
+                                         throw;
+                                     }
+                                     break;
+                                 case "RDY":
+                                     int rdy = int.Parse(args[1]);
+                                     rdyCount = rdy;
+                                     break;
+                             }
+                             readDoneChan.Writer.TryWrite(1);
+                         })
+                         .CaseReceive(scriptTime, o =>
+                         {
+                             bool doWrite = true;
+                             var inst = script[idx];
+                             if (inst.body.SequenceEqual(Encoding.UTF8.GetBytes("exit")))
+                             {
+                                 doLoop = false;
+                                 doWrite = false;
+                             }
+                             if (inst.frameType == (int)FrameType.Message)
+                             {
+                                 if (rdyCount == 0)
+                                 {
+                                     Console.WriteLine("[{0}] !!! RDY == 0", DateTime.Now.Formatted());
+                                     scriptTime = After(script[idx + 1].delay);
+                                     doWrite = false;
+                                 }
+                                 else
+                                 {
+                                     rdyCount--;
+                                 }
+                             }
 
-                            if (doWrite)
-                            {
-                                try
-                                {
-                                    connw.Write(framedResponse(inst.frameType, inst.body));
-                                    scriptTime = Time.After(script[idx + 1].delay);
-                                    idx++;
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine(ex.ToString());
-                                    doLoop = false;
-                                }
-                            }
-                        })
-                        .NoDefault();
+                             if (doWrite)
+                             {
+                                 try
+                                 {
+                                     connw.Write(framedResponse(inst.frameType, inst.body));
+                                     scriptTime = After(script[idx + 1].delay);
+                                     idx++;
+                                 }
+                                 catch (Exception ex)
+                                 {
+                                     Console.WriteLine(ex.ToString());
+                                     doLoop = false;
+                                 }
+                             }
+                         });
+                    select.ExecuteAsync().Wait();
                 }
             }
 

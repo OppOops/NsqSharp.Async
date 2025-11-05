@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using NsqSharp.Api;
 using NsqSharp.Core;
@@ -252,7 +253,7 @@ namespace NsqSharp.Tests
             q.AddHandler(h);
 
             q.ConnectToNsqd("127.0.0.1:4150");
-            q.Wait();
+            h.Fin.Wait();
 
             Assert.AreEqual(msgCount, h.messagesGood, "should have handled a diff number of messages");
             Assert.AreEqual(1, h.messagesFailed, "failed message not done");
@@ -447,21 +448,21 @@ namespace NsqSharp.Tests
         }
     }
 
-    public class MockProducerConn
+    internal class MockProducerConn
     {
         private static readonly byte[] PUB_BYTES = Encoding.UTF8.GetBytes("PUB");
         private static readonly byte[] OK_RESP = mockNSQD.framedResponse((int)FrameType.Response, Encoding.UTF8.GetBytes("OK"));
 
         private readonly IConnDelegate _connDelegate;
-        private readonly Chan<bool> _closeCh;
-        private readonly Chan<bool> _pubCh;
+        private readonly Channel<bool> _closeCh;
+        private readonly Channel<bool> _pubCh;
 
         public MockProducerConn(IConnDelegate connDelegate)
         {
             _connDelegate = connDelegate;
-            _closeCh = new Chan<bool>();
-            _pubCh = new Chan<bool>();
-            GoFunc.Run(router, "ProducerTest:router");
+            _closeCh = Channel.CreateUnbounded<bool>();
+            _pubCh = Channel.CreateUnbounded<bool>();
+            Task.Run(()=> router());
         }
 
         public override string ToString()
@@ -480,30 +481,30 @@ namespace NsqSharp.Tests
 
         public void Close()
         {
-            _closeCh.Close();
+            _closeCh.Writer.TryComplete();
         }
 
         public void WriteCommand(Command command)
         {
             if (command.Name.SequenceEqual(PUB_BYTES))
             {
-                _pubCh.Send(true);
+                _pubCh.Writer.TryWrite(true);
             }
         }
 
-        private void router()
+        private async Task router()
         {
             bool doLoop = true;
-            using (var select =
+            var select =
                 Select
                     .CaseReceive(_closeCh, o => doLoop = false)
-                    .CaseReceive(_pubCh, o => _connDelegate.OnResponse(null, OK_RESP))
-                    .NoDefault(defer: true))
+                    .CaseReceive(_pubCh, o => _connDelegate.OnResponse(null, OK_RESP));
+                    
             {
                 // ReSharper disable once LoopVariableIsNeverChangedInsideLoop
                 while (doLoop)
                 {
-                    select.Execute();
+                    await select.ExecuteAsync();
                 }
             }
         }
@@ -515,10 +516,15 @@ namespace NsqSharp.Tests
         public int messagesGood { get; set; }
         public int messagesFailed { get; set; }
 
+        private readonly TaskCompletionSource<bool> Finished = new TaskCompletionSource<bool>();
+
+        public Task Fin => Finished.Task;
+
         public void LogFailedMessage(IMessage message)
         {
             messagesFailed++;
-            q.StopAsync();
+            q.StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+            Finished.TrySetResult(true);
         }
 
         public void HandleMessage(IMessage message)

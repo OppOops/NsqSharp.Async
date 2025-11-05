@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading.Channels;
 using NsqSharp.Api;
 using NsqSharp.Utils;
 using NsqSharp.Utils.Channels;
@@ -85,7 +86,7 @@ namespace NsqSharp.Tests
                 var p = new Producer("127.0.0.1:4150");
                 p.Connect();
 
-                var startCh = new Chan<bool>();
+                var startCh = Channel.CreateUnbounded<bool>();
                 var wg = new WaitGroup();
 
                 for (int j = 0; j < parallel; j++)
@@ -93,7 +94,7 @@ namespace NsqSharp.Tests
                     wg.Add(1);
                     GoFunc.Run(() =>
                     {
-                        startCh.Receive();
+                        _ = startCh.Reader.WaitToReadAsync().Result;
                         for (int i = 0; i < benchmarkNum / parallel; i++)
                         {
                             p.Publish(topicName, body);
@@ -103,16 +104,16 @@ namespace NsqSharp.Tests
                 }
 
                 var stopwatch = Stopwatch.StartNew();
-                startCh.Close();
+                startCh.Writer.TryComplete();
 
-                var done = new Chan<bool>();
-                GoFunc.Run(() => { wg.Wait(); done.Send(true); }, "waiter and done sender");
+                var done = Channel.CreateUnbounded<bool>();
+                GoFunc.Run(() => { wg.Wait(); done.Writer.TryWrite(true); }, "waiter and done sender");
 
                 bool finished = false;
                 Select
                     .CaseReceive(done, b => finished = b)
-                    .CaseReceive(Time.After(TimeSpan.FromSeconds(10)), b => finished = false)
-                    .NoDefault();
+                    .CaseReceive(mockNSQD.After(TimeSpan.FromSeconds(10)), b => finished = false)
+                    .ExecuteAsync().Wait();
 
                 stopwatch.Stop();
 
@@ -143,7 +144,7 @@ namespace NsqSharp.Tests
 
                 byte[] body = new byte[512];
 
-                var startCh = new Chan<bool>();
+                var startCh = Channel.CreateUnbounded<bool>();
                 var wg = new WaitGroup();
 
                 for (int j = 0; j < parallel; j++)
@@ -151,7 +152,7 @@ namespace NsqSharp.Tests
                     wg.Add(1);
                     GoFunc.Run(() =>
                     {
-                        startCh.Receive();
+                        _ = startCh.Reader.WaitToReadAsync().Result;
                         for (int i = 0; i < benchmarkNum / parallel; i++)
                         {
                             _nsqdHttpClient.Publish(topicName, body);
@@ -161,7 +162,7 @@ namespace NsqSharp.Tests
                 }
 
                 var stopwatch = Stopwatch.StartNew();
-                startCh.Close();
+                startCh.Writer.TryComplete();
                 wg.Wait();
                 stopwatch.Stop();
 

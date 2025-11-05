@@ -37,6 +37,9 @@ namespace NsqSharp.Utils
                         _tickerChan.Writer.TryWrite(DateTime.UtcNow);
                     }
                 }
+            }, token).ContinueWith(_=> 
+            { 
+                _tickerChan.Writer.TryComplete();
             }, token);
         }
 
@@ -47,7 +50,7 @@ namespace NsqSharp.Utils
         public void Stop()
         {
             TimerContext.Cancel();
-            _tickerChan.Writer.Complete();
+            _tickerChan.Writer.TryComplete();
         }
 
         public ChannelReader<DateTime> C

@@ -183,7 +183,7 @@ namespace NsqSharp.Tests
                 q.DisconnectFromNsqd("1.2.3.4:4150");
                 q.DisconnectFromNsqd("127.0.0.1:4150");
 
-                q.Wait();
+                h.Fin.Wait();
 
                 stats = q.GetStats();
 
@@ -241,10 +241,15 @@ namespace NsqSharp.Tests
             public int messagesReceived { get; set; }
             public int messagesFailed { get; set; }
 
+            private readonly TaskCompletionSource<bool> CompletionSource = new TaskCompletionSource<bool>();
+
+            public Task Fin => CompletionSource.Task;
+
             public void LogFailedMessage(IMessage message)
             {
                 messagesFailed++;
-                q.StopAsync();
+                q.StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+                CompletionSource.TrySetResult(true);
             }
 
             public void HandleMessage(IMessage message)

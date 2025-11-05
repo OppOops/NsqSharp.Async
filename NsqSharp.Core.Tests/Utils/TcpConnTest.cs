@@ -41,7 +41,7 @@ namespace NsqSharp.Tests.Utils
                            wg.Done();
                        }, "TcpConnTest read loop");
 
-            var tcpConn = new TcpConn(IPAddress.Loopback.ToString(), 4192);
+            var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4192).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
             tcpConn.Write(helloMsg, 0, helloMsg.Length);
@@ -91,7 +91,7 @@ namespace NsqSharp.Tests.Utils
                 wg.Done();
             }, "TcpConnTest read loop");
 
-            var tcpConn = new TcpConn(IPAddress.Loopback.ToString(), 4193);
+            var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4193).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
             tcpConn.Write(helloMsg, 0, helloMsg.Length);
@@ -143,7 +143,7 @@ namespace NsqSharp.Tests.Utils
                 wg.Done();
             }, "TcpConnTest read loop");
 
-            var tcpConn = new TcpConn(IPAddress.Loopback.ToString(), 4194);
+            var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4194).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
             tcpConn.Write(helloMsg, 0, helloMsg.Length);
@@ -192,7 +192,7 @@ namespace NsqSharp.Tests.Utils
                 wg.Done();
             }, "TcpConnTest read loop");
 
-            var tcpConn = new TcpConn(IPAddress.Loopback.ToString(), 4195);
+            var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4195).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
             tcpConn.Write(helloMsg, 0, helloMsg.Length);

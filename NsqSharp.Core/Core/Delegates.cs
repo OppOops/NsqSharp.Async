@@ -1,5 +1,6 @@
-﻿using System;
+﻿using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("NsqSharp.Core.Tests")]
 namespace NsqSharp.Core
 {
     // https://github.com/nsqio/go-nsq/blob/master/delegates.go
@@ -32,7 +33,7 @@ namespace NsqSharp.Core
     internal interface IAsyncMessageDelegate
     {
     }
-
+    
     internal class ConnMessageDelegate : IMessageDelegate
     {
         public NsqContext Context { get; }
@@ -54,6 +55,7 @@ namespace NsqSharp.Core
     {
 
     }
+
 
     /// <summary>
     /// ConnDelegate is an interface of methods that are used as
