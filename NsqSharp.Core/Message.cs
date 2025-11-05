@@ -63,12 +63,8 @@ namespace NsqSharp
         /// <param name="body">The message body.</param>
         public Message(byte[] id, byte[] body)
         {
-            if (id == null)
-                throw new ArgumentNullException("id");
             if (id.Length != MsgIdLength)
-                throw new ArgumentOutOfRangeException("id", id.Length, string.Format("id length must be {0} bytes", MsgIdLength));
-            if (body == null)
-                throw new ArgumentNullException("body");
+                throw new ArgumentOutOfRangeException(nameof(id), id.Length, string.Format("id length must be {0} bytes", MsgIdLength));
 
             ID = id;
             Body = body;
@@ -147,7 +143,7 @@ namespace NsqSharp
         ///     <para>Using this method to respond triggers a backoff event.</para>
         /// </summary>
         /// <param name="delay">The minimum amount of time the message will be requeued.</param>
-        public void Requeue(TimeSpan? delay = null)
+        public void ReQueue(TimeSpan? delay = null)
         {
             doRequeue(delay, backoff: true);
         }
@@ -161,7 +157,7 @@ namespace NsqSharp
         ///     <para>Using this method to respond does not trigger a backoff event.</para>
         /// </summary>
         /// <param name="delay">The minimum amount of time the message will be requeued.</param>
-        public void RequeueWithoutBackoff(TimeSpan? delay)
+        public void ReQueueWithoutBackOff(TimeSpan? delay)
         {
             doRequeue(delay, backoff: false);
         }
@@ -174,8 +170,8 @@ namespace NsqSharp
             }
 
             var requeueTimeSpan = Delegate.OnRequeue(this, delay, backoff);
-            RequeuedUntil = DateTime.UtcNow + requeueTimeSpan;
-            BackoffTriggered = backoff;
+            ReQueuedUntil = DateTime.UtcNow + requeueTimeSpan;
+            BackOffTriggered = backoff;
         }
 
         /// <summary>
@@ -183,7 +179,7 @@ namespace NsqSharp
         ///     to slow its processing based on <see cref="Config.BackoffStrategy"/>.
         /// </summary>
         /// <value><c>true</c> if this message triggered a backoff event; otherwise, <c>false</c>.</value>
-        public bool BackoffTriggered { get; private set; }
+        public bool BackOffTriggered { get; private set; }
 
         /// <summary>
         ///     The minimum date/time the message will be requeued until; <c>null</c> indicates the message has not been
@@ -193,7 +189,7 @@ namespace NsqSharp
         ///     The minimum date/time the message will be requeued until; <c>null</c> indicates the message has not been
         ///     requeued.
         /// </value>
-        public DateTime? RequeuedUntil { get; private set; }
+        public DateTime? ReQueuedUntil { get; private set; }
 
         /// <summary>
         ///     <para>Encodes the message frame and body and writes it to the supplied <paramref name="writeStream"/>.</para>
@@ -206,9 +202,6 @@ namespace NsqSharp
         /// <returns>The number of bytes written to <paramref name="writeStream"/>.</returns>
         public Int64 WriteTo(Stream writeStream)
         {
-            if (writeStream == null)
-                throw new ArgumentNullException("writeStream");
-
             using (var writer = new BinaryWriter(writeStream))
             {
                 ulong ns = (ulong)(Timestamp - _epoch).Ticks * 100;
@@ -227,26 +220,20 @@ namespace NsqSharp
         /// <exception cref="ArgumentNullException">Thrown <paramref name="data"/> is <c>null</c>.</exception>
         /// <param name="data">The fully encoded message.</param>
         /// <returns>The decoded message.</returns>
-        [SuppressMessage("Microsoft.Usage", "CA2202:Do not dispose objects multiple times")]
         public static Message DecodeMessage(byte[] data)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            using var memoryStream = new MemoryStream(data);
+            using var binaryReader = new BinaryReader(memoryStream);
+            ulong timestamp = Binary.BigEndian.UInt64(binaryReader);
+            ushort attempts = Binary.BigEndian.UInt16(binaryReader);
 
-            using (var memoryStream = new MemoryStream(data))
-            using (var binaryReader = new BinaryReader(memoryStream))
-            {
-                ulong timestamp = Binary.BigEndian.UInt64(binaryReader);
-                ushort attempts = Binary.BigEndian.UInt16(binaryReader);
+            var timeOffset = new TimeSpan((long)(timestamp / 100));
 
-                var timeOffset = new TimeSpan((long)(timestamp / 100));
+            byte[] id = binaryReader.ReadBytes(MsgIdLength);
 
-                byte[] id = binaryReader.ReadBytes(MsgIdLength);
+            byte[] body = binaryReader.ReadBytes(data.Length - MsgIdLength - 10);
 
-                byte[] body = binaryReader.ReadBytes(data.Length - MsgIdLength - 10);
-
-                return new Message(id, body) { Timestamp = _epoch + timeOffset, Attempts = attempts };
-            }
+            return new Message(id, body) { Timestamp = _epoch + timeOffset, Attempts = attempts };
         }
 
         /// <summary>
@@ -261,10 +248,7 @@ namespace NsqSharp
         {
             get
             {
-                if (_idHexString == null)
-                {
-                    _idHexString = Encoding.UTF8.GetString(ID);
-                }
+                _idHexString ??= Encoding.UTF8.GetString(ID);
 
                 return _idHexString;
             }
@@ -344,7 +328,7 @@ namespace NsqSharp
         ///     <para>Using this method to respond triggers a backoff event.</para>
         /// </summary>
         /// <param name="delay">The minimum amount of time the message will be requeued.</param>
-        void Requeue(TimeSpan? delay = null);
+        void ReQueue(TimeSpan? delay = null);
 
         /// <summary>
         ///     <para>Sends a REQ command to the nsqd which sent this message, using the supplied delay.</para>
@@ -355,14 +339,14 @@ namespace NsqSharp
         ///     <para>Using this method to respond does not trigger a backoff event.</para>
         /// </summary>
         /// <param name="delay">The minimum amount of time the message will be requeued.</param>
-        void RequeueWithoutBackoff(TimeSpan? delay);
+        void ReQueueWithoutBackOff(TimeSpan? delay);
 
         /// <summary>
         ///     Indicates whether this message triggered a backoff event, causing the <see cref="Consumer"/>
         ///     to slow its processing based on <see cref="Config.BackoffStrategy"/>.
         /// </summary>
         /// <value><c>true</c> if this message triggered a backoff event; otherwise, <c>false</c>.</value>
-        bool BackoffTriggered { get; }
+        bool BackOffTriggered { get; }
 
         /// <summary>
         ///     The minimum date/time the message will be requeued until; <c>null</c> indicates the message has not been
@@ -372,7 +356,7 @@ namespace NsqSharp
         ///     The minimum date/time the message will be requeued until; <c>null</c> indicates the message has not been
         ///     requeued.
         /// </value>
-        DateTime? RequeuedUntil { get; }
+        DateTime? ReQueuedUntil { get; }
 
         /// <summary>
         ///     <para>Encodes the message frame and body and writes it to the supplied <paramref name="writeStream"/>.</para>

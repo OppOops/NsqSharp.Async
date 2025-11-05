@@ -71,7 +71,7 @@ namespace NsqSharp
         private readonly Channel<byte[]> _errorChan;
 
         private readonly Channel<ProducerResponse> _transactionChan;
-        private readonly Queue<ProducerResponse> _transactions = new Queue<ProducerResponse>();
+        private readonly Queue<ProducerResponse> _transactions = new();
         private int _state;
 
         private int _concurrentProducers;
@@ -101,7 +101,7 @@ namespace NsqSharp
         /// <summary>
         /// the slice of variadic arguments passed to PublishAsync or MultiPublishAsync
         /// </summary>
-        public object[] Args { get; init; } = Array.Empty<object>();
+        public object[] Args { get; init; } = [];
 
         internal void SetAsFinished()
         {
@@ -364,7 +364,7 @@ namespace NsqSharp
             TaskCompletionSource<ProducerResponse>? doneChan, 
             params object[] args)
         {
-            ProducerResponse? t = null;
+            ProducerResponse? t;
             Interlocked.Increment(ref _concurrentProducers);
 
             t = new ProducerResponse
@@ -492,15 +492,15 @@ namespace NsqSharp
             // clean up transactions we can easily account for
             foreach (var t in _transactions)
             {
-                var t1 = t with { Error = new ErrNotConnected() }; ;
-                t.SetAsFinished();
+                var t1 = t with { Error = new ErrNotConnected() };
+                t1.SetAsFinished();
             }
             _transactions.Clear();
 
             while(_transactionChan.Reader.TryRead(out var t2))
             {
-                var t3 = t2 with { Error = new ErrNotConnected() }; ;
-                t2.SetAsFinished();
+                var t3 = t2 with { Error = new ErrNotConnected() }; 
+                t3.SetAsFinished();
             }
         }
 

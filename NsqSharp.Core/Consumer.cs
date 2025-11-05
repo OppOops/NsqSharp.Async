@@ -82,7 +82,7 @@ namespace NsqSharp
 
         /// <summary>The number of messages requeued.</summary>
         /// <value>The number of messages requeued.</value>
-        public long MessagesRequeued { get; internal set; }
+        public long MessagesReQueued { get; internal set; }
 
         /// <summary>The number of nsqd connections.</summary>
         /// <value>The number of nsqd connections.</value>
@@ -170,11 +170,11 @@ namespace NsqSharp
         private int _maxInFlight;
         private long _perConnMaxInFlightOverride;
 
-        private readonly ReaderWriterLockSlim _mtx = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _mtx = new();
 
         private readonly ILogger _logger;
 
-        private IDiscoveryFilter _behaviorDelegate;
+        private IDiscoveryFilter? _behaviorDelegate;
 
         private readonly long _id;
         private readonly string _topic;
@@ -184,21 +184,21 @@ namespace NsqSharp
 
         private int _needRdyRedistributed;
 
-        private readonly ReaderWriterLockSlim _backoffMtx = new ReaderWriterLockSlim(); // TODO: Dispose
+        private readonly ReaderWriterLockSlim _backoffMtx = new(); // TODO: Dispose
 
         private readonly Channel<Message> _incomingMessages;
 
-        private readonly ReaderWriterLockSlim _rdyRetryMtx = new ReaderWriterLockSlim(); // TODO: Dispose
+        private readonly ReaderWriterLockSlim _rdyRetryMtx = new(); // TODO: Dispose
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _rdyRetryTimers;
 
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _pendingConnections;
         private readonly ConcurrentDictionary<string, NsqContext> _connections;
 
-        private readonly List<string> _nsqdTCPAddrs = new List<string>();
+        private readonly List<string> _nsqdTCPAddrs = [];
 
         // used at connection close to force a possible reconnect
         private readonly Channel<int> _lookupdRecheckChan;
-        private readonly List<string> _lookupdHTTPAddrs = new List<string>();
+        private readonly List<string> _lookupdHTTPAddrs = [];
         private int _lookupdQueryIndex;
 
         private int _runningHandlers;
@@ -333,7 +333,7 @@ namespace NsqSharp
             {
                 MessagesReceived = _messagesReceived,
                 MessagesFinished = _messagesFinished,
-                MessagesRequeued = _messagesRequeued,
+                MessagesReQueued = _messagesRequeued,
                 Connections = GetCurrentConnections().Count
             };
         }
@@ -343,7 +343,7 @@ namespace NsqSharp
             _mtx.EnterReadLock();
             try
             {
-                return new List<NsqContext>(_connections.Values);
+                return [.. _connections.Values];
             }
             finally
             {
@@ -451,7 +451,7 @@ namespace NsqSharp
         {
             if (addresses.Length == 0)
                 throw new ArgumentException("addresses.Length = 0", nameof(addresses));
-            addresses = addresses.Distinct().ToArray();
+            addresses = [.. addresses.Distinct()];
             if (_lookupdHTTPAddrs.Count > 0)
                 throw new InvalidOperationException("cannot modify lookupd address at runtime");
             if (_stopFlag == 1)
@@ -633,7 +633,7 @@ namespace NsqSharp
             var behaviorDelegate = _behaviorDelegate;
             if (behaviorDelegate != null)
             {
-                nsqAddrs = new Collection<string>(behaviorDelegate.Filter(nsqAddrs).ToList());
+                nsqAddrs = new Collection<string>([.. behaviorDelegate.Filter(nsqAddrs)]);
             }
 
             if (_stopFlag == 1)
@@ -665,10 +665,8 @@ namespace NsqSharp
         /// <seealso cref="ConnectToNsqLookupd"/>
         public void ConnectToNsqd(params string[] addresses)
         {
-            if (addresses == null)
-                throw new ArgumentNullException("addresses");
             if (addresses.Length == 0)
-                throw new ArgumentException("addresses.Length = 0", "addresses");
+                throw new ArgumentException("addresses.Length = 0", nameof(addresses));
 
             foreach (string address in addresses)
             {
@@ -731,7 +729,7 @@ namespace NsqSharp
                 }
             });
 
-            IdentifyResponse resp;
+            IdentifyResponse? resp;
             NsqContext nsqConnectionContext;
             try
             {
@@ -795,7 +793,7 @@ namespace NsqSharp
         public void DisconnectFromNsqd(string nsqdAddress)
         {
             if (string.IsNullOrEmpty(nsqdAddress))
-                throw new ArgumentNullException("nsqdAddress");
+                throw new ArgumentNullException(nameof(nsqdAddress));
 
             _mtx.EnterWriteLock();
             try
@@ -1164,7 +1162,7 @@ namespace NsqSharp
             }
         }
 
-        private Exception updateRDY(NsqContext c, long count)
+        private Exception? updateRDY(NsqContext c, long count)
         {
             try
             {
@@ -1432,6 +1430,7 @@ namespace NsqSharp
                 connections.Select(c => c.WriteCommandTask(cmd, cts.Token))
             );
             await all;
+            _stopFlag = 1;
         }
 
         private void StopAcceptIncomingMessage()
@@ -1462,10 +1461,8 @@ namespace NsqSharp
         /// </param>
         public void AddHandler(IHandler handler, int threads = 1)
         {
-            if (handler == null)
-                throw new ArgumentNullException("handler");
             if (threads <= 0)
-                throw new ArgumentOutOfRangeException("threads", threads, "threads must be > 0");
+                throw new ArgumentOutOfRangeException(nameof(threads), threads, "threads must be > 0");
 
             addConcurrentHandlers(handler, threads);
         }
@@ -1481,10 +1478,8 @@ namespace NsqSharp
         /// </summary>
         private void addConcurrentHandlers(IHandler handler, int concurrency)
         {
-            if (handler == null)
-                throw new ArgumentNullException("handler");
             if (concurrency <= 0)
-                throw new ArgumentOutOfRangeException("concurrency", concurrency, "concurrency must be > 0");
+                throw new ArgumentOutOfRangeException(nameof(concurrency), concurrency, "concurrency must be > 0");
 
             if (_connectedFlag == 1)
             {
@@ -1533,7 +1528,7 @@ namespace NsqSharp
                 {
                     log(LogLevel.Error, string.Format("Handler returned error for msg {0} - {1}", message.Id, ex));
                     if (!message.IsAutoResponseDisabled)
-                        message.Requeue();
+                        message.ReQueue();
                     continue;
                 }
 

@@ -23,14 +23,14 @@ namespace NsqSharp.Api
         protected NsqHttpApi(string httpAddress, TimeSpan httpRequestTimeout)
         {
             if (string.IsNullOrEmpty(httpAddress))
-                throw new ArgumentNullException("httpAddress");
+                throw new ArgumentNullException(nameof(httpAddress));
             if (httpRequestTimeout <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException("httpRequestTimeout", httpRequestTimeout,
+                throw new ArgumentOutOfRangeException(nameof(httpRequestTimeout), httpRequestTimeout,
                     "httpRequestTimeout must be greater than TimeSpan.Zero");
 
             if (!httpAddress.StartsWith("http"))
                 httpAddress = "http://" + httpAddress;
-            httpAddress = httpAddress.TrimEnd(new[] { '/' });
+            httpAddress = httpAddress.TrimEnd(['/']);
 
             _timeoutMilliseconds = (int)httpRequestTimeout.TotalMilliseconds;
 
@@ -118,9 +118,9 @@ namespace NsqSharp.Api
         protected static void ValidateTopic(string topic)
         {
             if (string.IsNullOrEmpty(topic))
-                throw new ArgumentNullException("topic");
+                throw new ArgumentNullException(nameof(topic));
             if (!Protocol.IsValidTopicName(topic))
-                throw new ArgumentException(string.Format("'{0}' is an invalid topic name", topic), "topic");
+                throw new ArgumentException(string.Format("'{0}' is an invalid topic name", topic), nameof(topic));
         }
 
         /// <summary>Validates the topic and channel name.</summary>
@@ -133,9 +133,9 @@ namespace NsqSharp.Api
         {
             ValidateTopic(topic);
             if (string.IsNullOrEmpty(channel))
-                throw new ArgumentNullException("channel");
+                throw new ArgumentNullException(nameof(channel));
             if (!Protocol.IsValidTopicName(channel))
-                throw new ArgumentException(string.Format("'{0}' is an invalid channel name", channel), "channel");
+                throw new ArgumentException(string.Format("'{0}' is an invalid channel name", channel), nameof(channel));
         }
 
         /// <summary>Gets the HTTP address plus route.</summary>
@@ -145,9 +145,9 @@ namespace NsqSharp.Api
         protected string GetFullUrl(string route)
         {
             if (string.IsNullOrEmpty(route))
-                throw new ArgumentNullException("route");
+                throw new ArgumentNullException(nameof(route));
 
-            route = route.TrimStart(new[] { '/' });
+            route = route.TrimStart(['/']);
 
             return string.Format("{0}/{1}", _httpAddress, route);
         }
@@ -180,7 +180,7 @@ namespace NsqSharp.Api
         /// <param name="timeoutMilliseconds">The timeout in milliseconds.</param>
         /// <param name="body">The body.</param>
         /// <returns>The response from the server.</returns>
-        protected static byte[] Request(string endpoint, HttpMethod httpMethod, int timeoutMilliseconds, byte[] body = null)
+        protected static byte[] Request(string endpoint, HttpMethod httpMethod, int timeoutMilliseconds, byte[]? body = null)
         {
             var webRequest = (HttpWebRequest)WebRequest.Create(endpoint);
             webRequest.Proxy = WebRequest.DefaultWebProxy;
@@ -194,45 +194,38 @@ namespace NsqSharp.Api
                 webRequest.ContentType = "application/x-www-form-urlencoded";
                 webRequest.ContentLength = body.Length;
 
-                using (var request = webRequest.GetRequestStream())
-                {
-                    request.Write(body, 0, body.Length);
-                }
+                using var request = webRequest.GetRequestStream();
+                request.Write(body, 0, body.Length);
             }
 
-            using (var httpResponse = (HttpWebResponse)webRequest.GetResponse())
-            using (var responseStream = httpResponse.GetResponseStream())
+            using var httpResponse = (HttpWebResponse)webRequest.GetResponse();
+            using var responseStream = httpResponse.GetResponseStream() ?? throw new Exception("responseStream is null");
+            int contentLength = (int)httpResponse.ContentLength;
+            byte[] responseBytes;
+
+            var buf = new byte[256];
+            using (MemoryStream memoryStream = new())
             {
-                if (responseStream == null)
-                    throw new Exception("responseStream is null");
-
-                int contentLength = (int)httpResponse.ContentLength;
-                byte[] responseBytes;
-
-                var buf = new byte[256];
-                using (MemoryStream memoryStream = new MemoryStream())
+                int bytesRead;
+                do
                 {
-                    int bytesRead;
-                    do
-                    {
-                        bytesRead = responseStream.Read(buf, 0, 256);
-                        memoryStream.Write(buf, 0, bytesRead);
-                    } while (bytesRead > 0);
+                    bytesRead = responseStream.Read(buf, 0, 256);
+                    memoryStream.Write(buf, 0, bytesRead);
+                } while (bytesRead > 0);
 
-                    responseBytes = memoryStream.ToArray();
-                }
-
-                if (responseBytes.Length < contentLength)
-                    throw new Exception(string.Format("premature end of response stream {0}", endpoint));
-
-                if (httpResponse.StatusCode != HttpStatusCode.OK)
-                {
-                    throw new Exception(string.Format("got response {0} {1} {2}",
-                        httpResponse.StatusDescription, endpoint, Encoding.UTF8.GetString(responseBytes)));
-                }
-
-                return responseBytes;
+                responseBytes = memoryStream.ToArray();
             }
+
+            if (responseBytes.Length < contentLength)
+                throw new Exception(string.Format("premature end of response stream {0}", endpoint));
+
+            if (httpResponse.StatusCode != HttpStatusCode.OK)
+            {
+                throw new Exception(string.Format("got response {0} {1} {2}",
+                    httpResponse.StatusDescription, endpoint, Encoding.UTF8.GetString(responseBytes)));
+            }
+
+            return responseBytes;
         }
     }
 

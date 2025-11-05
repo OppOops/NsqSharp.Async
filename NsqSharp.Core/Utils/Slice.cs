@@ -176,8 +176,7 @@ namespace NsqSharp.Utils
         /// <returns><c>true</c> if the slice and string are equal; otherwise, <c>false</c>.</returns>
         public static bool operator ==(Slice<T> s1, string s2)
         {
-            bool isNull = ReferenceEquals(s1, null);
-            if (!isNull)
+            if (s1 is not null)
             {
                 return s1.Equals(s2);
             }
@@ -203,7 +202,7 @@ namespace NsqSharp.Utils
         /// </summary>
         /// <param name="obj">The object to check equality with.</param>
         /// <returns><c>true</c> if the strings or references are equal; otherwise, <c>false</c>.</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj == null)
                 return false;

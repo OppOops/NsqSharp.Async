@@ -392,24 +392,14 @@ namespace NsqSharp.Tests
             c.Set("tls-check-certificate-revocation", true);
             Assert.IsTrue(c.TlsConfig.CheckCertificateRevocation);
 
-            // tls_min_version
-            c.Set("tls_min_version", "ssl3.0");
-            Assert.AreEqual(SslProtocols.Ssl3, c.TlsConfig.MinVersion);
-
-            c.Set("tls_min_version", "tls1.0");
-            Assert.AreEqual(SslProtocols.Tls, c.TlsConfig.MinVersion);
-
-#if !NETFX_4_0
-            c.Set("tls_min_version", "tls1.1");
-            Assert.AreEqual(SslProtocols.Tls11, c.TlsConfig.MinVersion);
-
+            
             c.Set("tls_min_version", "tls1.2");
             Assert.AreEqual(SslProtocols.Tls12, c.TlsConfig.MinVersion);
-#endif
+            c.Set("tls_min_version", "tls1.3");
+            Assert.AreEqual(SslProtocols.Tls13, c.TlsConfig.MinVersion);
 
             Assert.Throws<Exception>(() => c.Set("tls_min_version", "ssl2.0"));
 
-            Assert.Throws<Exception>(() => c.Set("tls-min-version", "tls1.3"));
         }
 
         [Test]

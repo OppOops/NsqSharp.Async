@@ -54,7 +54,7 @@ namespace NsqSharp.Utils
 
             foreach (var sslProtocol in Enum.GetValues(typeof(SslProtocols)).Cast<int>())
             {
-                if (sslProtocol >= minSslProtocol && sslProtocol != (int)SslProtocols.Default)
+                if (sslProtocol >= minSslProtocol)
                     intSslProtocols |= sslProtocol;
             }
 

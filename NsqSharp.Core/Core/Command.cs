@@ -43,20 +43,20 @@ namespace NsqSharp.Core
         /// <summary>Params</summary>
         public ICollection<byte[]> Params { get; set; }
         /// <summary>Body</summary>
-        public byte[] Body { get; set; }
+        public byte[]? Body { get; set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Command" /> class.
         /// </summary>
-        public Command(byte[] name, string body, params string[] parameters)
-            : this(name, body == null ? null : Encoding.UTF8.GetBytes(body), parameters)
+        public Command(byte[] name, string? body, params string[] parameters)
+            : this(name, string.IsNullOrEmpty(body) ? null : Encoding.UTF8.GetBytes(body), parameters)
         {
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Command" /> class.
         /// </summary>
-        public Command(byte[] name, byte[] body, params string[] parameters)
+        public Command(byte[] name, byte[]? body, params string[] parameters)
         {
             Name = name;
             Body = body;
@@ -74,7 +74,7 @@ namespace NsqSharp.Core
         /// <summary>
         /// Initializes a new instance of the <see cref="Command" /> class.
         /// </summary>
-        public Command(byte[] name, byte[] body, ICollection<byte[]> parameters)
+        public Command(byte[] name, byte[]? body, ICollection<byte[]> parameters)
         {
             Name = name;
             Body = body;
@@ -204,7 +204,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Register(string topic, string channel)
         {
-            return new Command(REGISTER_BYTES, (byte[])null, topic, channel);
+            return new Command(REGISTER_BYTES, (byte[]?)null, topic, channel);
         }
 
         /// <summary>
@@ -212,7 +212,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command UnRegister(string topic, string channel)
         {
-            return new Command(UNREGISTER_BYTES, (byte[])null, topic, channel);
+            return new Command(UNREGISTER_BYTES, (byte[]?)null, topic, channel);
         }
 
         /// <summary>
@@ -221,7 +221,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Ping()
         {
-            return new Command(PING_BYTES, (byte[])null);
+            return new Command(PING_BYTES, (byte[]?)null);
         }
 
         /// <summary>
@@ -236,13 +236,9 @@ namespace NsqSharp.Core
         /// MultiPublish creates a new Command to write more than one message to a given topic.
         /// This is useful for high-throughput situations to avoid roundtrips and saturate the pipe.
         /// </summary>
-        [SuppressMessage("Microsoft.Usage", "CA2202:Do not dispose objects multiple times")]
         public static Command MultiPublish(string topic, IEnumerable<byte[]> bodies)
         {
-            if (bodies == null)
-                throw new ArgumentNullException("bodies");
-
-            var bodiesCollection = bodies as ICollection<byte[]> ?? bodies.ToList();
+            var bodiesCollection = bodies as ICollection<byte[]> ?? [.. bodies];
 
             int num = bodiesCollection.Count;
             byte[] body;
@@ -270,7 +266,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Subscribe(string topic, string channel)
         {
-            return new Command(SUB_BYTES, (byte[])null, topic, channel);
+            return new Command(SUB_BYTES, (byte[]?)null, topic, channel);
         }
 
         /// <summary>
@@ -279,7 +275,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Ready(long count)
         {
-            return new Command(RDY_BYTES, (byte[])null, count.ToString(CultureInfo.InvariantCulture));
+            return new Command(RDY_BYTES, (byte[]?)null, count.ToString(CultureInfo.InvariantCulture));
         }
 
         /// <summary>
@@ -288,12 +284,10 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Finish(byte[] id)
         {
-            if (id == null)
-                throw new ArgumentNullException("id");
             if (id.Length != Message.MsgIdLength)
-                throw new ArgumentOutOfRangeException("id", id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
+                throw new ArgumentOutOfRangeException(nameof(id), id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
 
-            return new Command(FIN_BYTES, null, new List<byte[]> { id });
+            return new Command(FIN_BYTES, null, [id]);
         }
 
         /// <summary>
@@ -301,18 +295,18 @@ namespace NsqSharp.Core
         /// a given message (by id) should be requeued after the given delay
         /// NOTE: a delay of 0 indicates immediate requeue
         /// </summary>
-        public static Command Requeue(byte[] id, TimeSpan delay)
+        public static Command ReQueue(byte[] id, TimeSpan delay)
         {
-            if (id == null)
-                throw new ArgumentNullException("id");
             if (id.Length != Message.MsgIdLength)
-                throw new ArgumentOutOfRangeException("id", id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
+                throw new ArgumentOutOfRangeException(nameof(id), id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
 
             int delayMilliseconds = (int)delay.TotalMilliseconds;
 
-            var parameters = new List<byte[]>();
-            parameters.Add(id);
-            parameters.Add(Encoding.UTF8.GetBytes(delayMilliseconds.ToString(CultureInfo.InvariantCulture)));
+            var parameters = new List<byte[]>
+            {
+                id,
+                Encoding.UTF8.GetBytes(delayMilliseconds.ToString(CultureInfo.InvariantCulture))
+            };
 
             return new Command(REQ_BYTES, null, parameters);
         }
@@ -323,12 +317,10 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Touch(byte[] id)
         {
-            if (id == null)
-                throw new ArgumentNullException("id");
             if (id.Length != Message.MsgIdLength)
-                throw new ArgumentOutOfRangeException("id", id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
+                throw new ArgumentOutOfRangeException(nameof(id), id.Length, string.Format("id length must be {0} bytes", Message.MsgIdLength));
 
-            return new Command(TOUCH_BYTES, null, new List<byte[]> { id });
+            return new Command(TOUCH_BYTES, null, [id]);
         }
 
         /// <summary>
@@ -339,7 +331,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command StartClose()
         {
-            return new Command(CLS_BYTES, (byte[])null);
+            return new Command(CLS_BYTES, (byte[]?)null);
         }
 
         /// <summary>
@@ -348,7 +340,7 @@ namespace NsqSharp.Core
         /// </summary>
         public static Command Nop()
         {
-            return new Command(NOP_BYTES, (byte[])null);
+            return new Command(NOP_BYTES, (byte[]?)null);
         }
     }
 }

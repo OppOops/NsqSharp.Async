@@ -16,9 +16,9 @@ namespace NsqSharp.Utils
         // https://msdn.microsoft.com/en-us/library/system.net.sockets.socket.setsocketoption.aspx
 
         private readonly TcpClient _tcpClient;
-        private readonly object _readLocker = new object();
-        private readonly object _writeLocker = new object();
-        private readonly object _closeLocker = new object();
+        private readonly object _readLocker = new();
+        private readonly object _writeLocker = new();
+        private readonly object _closeLocker = new();
         private readonly string _hostname;
         private Stream _networkStream;
         private bool _isClosed;
@@ -37,7 +37,7 @@ namespace NsqSharp.Utils
             return new TcpConn(c, hostName);
         }
 
-        public void UpgradeTLS(TlsConfig tlsConfig)
+        public void UpgradeTLS(TlsConfig configTLS)
         {
             lock (_readLocker)
             {
@@ -45,7 +45,7 @@ namespace NsqSharp.Utils
                 {
                     const bool leaveInnerStreamOpen = false;
 
-                    var enabledSslProtocols = tlsConfig.GetEnabledSslProtocols();
+                    var enabledSslProtocols = configTLS.GetEnabledSslProtocols();
 
                     string? errorMessage = null;
 
@@ -53,12 +53,12 @@ namespace NsqSharp.Utils
                         _networkStream,
                         leaveInnerStreamOpen,
                         (sender, certificate, chain, sslPolicyErrors) =>
-                            ValidateCertificates(chain, sslPolicyErrors, tlsConfig, out errorMessage)
+                            ValidateCertificates(chain, sslPolicyErrors, configTLS, out errorMessage)
                     );
 
                     try
                     {
-                        sslStream.AuthenticateAsClient(_hostname, new X509Certificate2Collection(), enabledSslProtocols, tlsConfig.CheckCertificateRevocation);
+                        sslStream.AuthenticateAsClient(_hostname, new X509Certificate2Collection(), enabledSslProtocols, configTLS.CheckCertificateRevocation);
                     }
                     catch (Exception ex)
                     {

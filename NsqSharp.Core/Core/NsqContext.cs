@@ -523,7 +523,7 @@ namespace NsqSharp.Core
 
     internal class RunTimeNsqConnectionHandler : INsqConnection, INsqCommandWritter
     {
-        private INsqConnection Handler;
+        private readonly INsqConnection Handler;
         private readonly ChannelWriter<Command> Writer;
         private readonly CancellationTokenSource Context;
         public RunTimeNsqConnectionHandler(CancellationTokenSource ctx, INsqConnection handler, ChannelWriter<Command> writer)
@@ -973,7 +973,7 @@ namespace NsqSharp.Core
             _consumerMsgResponseChan.Writer.TryWrite(new msgResponse
             {
                 msg = m,
-                cmd = Command.Requeue(m.ID, delay.Value),
+                cmd = Command.ReQueue(m.ID, delay.Value),
                 success = false,
                 backoff = backoff
             });

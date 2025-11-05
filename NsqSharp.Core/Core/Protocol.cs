@@ -79,9 +79,6 @@ namespace NsqSharp.Core
         /// <returns>The response as a byte array</returns>
         public static byte[] ReadResponse(IReader r)
         {
-            if (r == null)
-                throw new ArgumentNullException("r");
-
             // message size
             int msgSize = Binary.ReadInt32(r, Binary.BigEndian);
             byte[] data = new byte[msgSize];
@@ -98,10 +95,8 @@ namespace NsqSharp.Core
         /// <param name="body">The body.</param>
         public static void UnpackResponse(byte[] response, out FrameType frameType, out byte[] body)
         {
-            if (response == null)
-                throw new ArgumentNullException("response");
             if (response.Length < 4)
-                throw new ArgumentException("length of response is too small", "response");
+                throw new ArgumentException("length of response is too small", nameof(response));
 
             frameType = (FrameType)Binary.BigEndian.Int32(response);
             body = new byte[response.Length - 4];

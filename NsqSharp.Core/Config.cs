@@ -27,7 +27,7 @@ namespace NsqSharp
     /// <summary>
     /// Read only configuration values related to backoff. See <see cref="IBackoffStrategy"/>.
     /// </summary>
-    public interface IBackoffConfig
+    public interface IBackOffConfig
     {
         /// <summary>Unit of time for calculating consumer backoff.</summary>
         TimeSpan BackoffMultiplier { get; }
@@ -53,7 +53,7 @@ namespace NsqSharp
         /// </param>
         /// <returns>A <see cref="BackoffCalculation"/> object with the backoff duration and whether to increase
         ///          the backoff level.</returns>
-        BackoffCalculation Calculate(IBackoffConfig backoffConfig, int backoffLevel);
+        BackoffCalculation Calculate(IBackOffConfig backoffConfig, int backoffLevel);
     }
 
     /// <summary>
@@ -73,70 +73,60 @@ namespace NsqSharp
     public class ExponentialStrategy : IBackoffStrategy
     {
         /// <summary>
-        /// Calculate returns a duration of time: 2^(backoffLevel-1) * <see cref="IBackoffConfig.BackoffMultiplier"/>.
+        /// Calculate returns a duration of time: 2^(backoffLevel-1) * <see cref="IBackOffConfig.BackoffMultiplier"/>.
         /// </summary>
-        /// <param name="backoffConfig">Read only configuration values related to backoff.</param>
-        /// <param name="backoffLevel">
+        /// <param name="backOffConfig">Read only configuration values related to backoff.</param>
+        /// <param name="backOffLevel">
         ///     The backoff level (>= 1) used to calculate backoff duration.
-        ///     <paramref name="backoffLevel"/> increases/decreases with successive failures/successes.
+        ///     <paramref name="backOffLevel"/> increases/decreases with successive failures/successes.
         /// </param>
         /// <returns>A <see cref="BackoffCalculation"/> object with the backoff duration and whether to increase
         ///          the backoff level.</returns>
-        public BackoffCalculation Calculate(IBackoffConfig backoffConfig, int backoffLevel)
+        public BackoffCalculation Calculate(IBackOffConfig backOffConfig, int backOffLevel)
         {
-            var backoffDuration = new TimeSpan(backoffConfig.BackoffMultiplier.Ticks *
-                (long)Math.Pow(2, backoffLevel - 1));
+            var backoffDuration = new TimeSpan(backOffConfig.BackoffMultiplier.Ticks *
+                (long)Math.Pow(2, backOffLevel - 1));
 
             return new BackoffCalculation
             {
                 Duration = backoffDuration,
-                IncreaseBackoffLevel = backoffDuration < backoffConfig.MaxBackoffDuration
+                IncreaseBackoffLevel = backoffDuration < backOffConfig.MaxBackoffDuration
             };
         }
     }
 
     /// <summary>
     /// FullJitterStrategy returns a random duration of time in the
-    /// range [0, 2^(backoffLevel-1) * <see cref="IBackoffConfig.BackoffMultiplier"/>).
+    /// range [0, 2^(backoffLevel-1) * <see cref="IBackOffConfig.BackoffMultiplier"/>).
     /// Implements http://www.awsarchitectureblog.com/2015/03/backoff.html.
     /// </summary>
     public class FullJitterStrategy : IBackoffStrategy
     {
-        private readonly Once rngOnce = new Once();
-        private RNGCryptoServiceProvider rng;
+        private readonly Once rngOnce = new();
 
         /// <summary>
         /// Calculate returns a random duration of time in the
-        /// range [0, 2^(backoffLevel-1) * <see cref="IBackoffConfig.BackoffMultiplier"/>).
+        /// range [0, 2^(backoffLevel-1) * <see cref="IBackOffConfig.BackoffMultiplier"/>).
         /// </summary>
-        /// <param name="backoffConfig">Read only configuration values related to backoff.</param>
-        /// <param name="backoffLevel">
+        /// <param name="backOffConfig">Read only configuration values related to backoff.</param>
+        /// <param name="backOffLevel">
         ///     The backoff level (>= 1) used to calculate backoff duration.
-        ///     <paramref name="backoffLevel"/> increases/decreases with successive failures/successes.
+        ///     <paramref name="backOffLevel"/> increases/decreases with successive failures/successes.
         /// </param>
         /// <returns>A <see cref="BackoffCalculation"/> object with the backoff duration and whether to increase
         ///          the backoff level.</returns>
-        public BackoffCalculation Calculate(IBackoffConfig backoffConfig, int backoffLevel)
+        public BackoffCalculation Calculate(IBackOffConfig backOffConfig, int backOffLevel)
         {
-            rngOnce.Do(() =>
-                {
-                    // lazily initialize the RNG
-                    if (rng != null)
-                        return;
-                    rng = new RNGCryptoServiceProvider();
-                }
-            );
-
-            var backoffDuration = new TimeSpan(backoffConfig.BackoffMultiplier.Ticks *
-                (long)Math.Pow(2, backoffLevel - 1));
+            var backoffDuration = new TimeSpan(backOffConfig.BackoffMultiplier.Ticks *
+                (long)Math.Pow(2, backOffLevel - 1));
 
             int maxBackoffMilliseconds = (int)backoffDuration.TotalMilliseconds;
-            int backoffMilliseconds = maxBackoffMilliseconds == 0 ? 0 : rng.Intn(maxBackoffMilliseconds);
+            int backoffMilliseconds = maxBackoffMilliseconds == 0 ? 0 : Random.Shared.Next(maxBackoffMilliseconds);
 
             return new BackoffCalculation
             {
                 Duration = TimeSpan.FromMilliseconds(backoffMilliseconds),
-                IncreaseBackoffLevel = backoffDuration < backoffConfig.MaxBackoffDuration
+                IncreaseBackoffLevel = backoffDuration < backOffConfig.MaxBackoffDuration
             };
         }
     }
@@ -150,7 +140,7 @@ namespace NsqSharp
     ///
     /// Use Set(string option, object value) as an alternate way to set parameters
     /// </summary>
-    public class Config : IBackoffConfig
+    public class Config : IBackOffConfig
     {
         // used to Initialize, Validate
         private readonly List<configHandler> configHandlers;
@@ -330,7 +320,7 @@ namespace NsqSharp
         /// </summary>
         public Config()
         {
-            configHandlers = new List<configHandler> { new structTagsConfig(), new tlsConfig() };
+            configHandlers = [new structTagsConfig(), new tlsConfig()];
             setDefaults();
         }
 
@@ -395,10 +385,7 @@ namespace NsqSharp
             foreach (var h in configHandlers)
             {
                 var hh = h as defaultsHandler;
-                if (hh != null)
-                {
-                    hh.SetDefaults(this);
-                }
+                hh?.SetDefaults(this);
             }
         }
 
@@ -469,7 +456,7 @@ namespace NsqSharp
 
                 string hostname = OS.Hostname();
 
-                c.ClientID = hostname.Split(new[] { '.' })[0];
+                c.ClientID = hostname.Split(['.'])[0];
                 c.Hostname = hostname;
                 c.UserAgent = string.Format("{0}/{1}", ClientInfo.ClientName, ClientInfo.Version);
             }
@@ -541,22 +528,15 @@ namespace NsqSharp
                         var version = (string)value;
                         switch (version)
                         {
-                            case "ssl3.0":
-                                tlsConfig.MinVersion = SslProtocols.Ssl3;
-                                break;
-                            case "tls1.0":
-                                tlsConfig.MinVersion = SslProtocols.Tls;
-                                break;
-#if !NETFX_4_0
-                            case "tls1.1":
-                                tlsConfig.MinVersion = SslProtocols.Tls11;
-                                break;
                             case "tls1.2":
                                 tlsConfig.MinVersion = SslProtocols.Tls12;
                                 break;
-#endif
+                            case "tls1.3":
+                                tlsConfig.MinVersion = SslProtocols.Tls13;
+                                break;
+
                             default:
-                                throw new Exception(string.Format("ERROR: {0} is not a tls version", value));
+                                throw new Exception(string.Format("ERROR: {0} is not a tls version or is obsoleted", value));
                         }
                         break;
                     case "tls_check_certificate_revocation":
@@ -584,9 +564,10 @@ namespace NsqSharp
         /// <returns>A copy of this object.</returns>
         public Config Clone()
         {
-            var newConfig = new Config();
-
-            newConfig.BackoffStrategy = BackoffStrategy;
+            var newConfig = new Config
+            {
+                BackoffStrategy = BackoffStrategy
+            };
 
             var typ = GetType();
             foreach (var field in typ.GetProperties())

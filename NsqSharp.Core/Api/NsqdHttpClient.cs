@@ -33,9 +33,6 @@ namespace NsqSharp.Api
         public string Publish(string topic, string message)
         {
             ValidateTopic(topic);
-            if (message == null)
-                throw new ArgumentNullException("message");
-
             return Publish(topic, Encoding.UTF8.GetBytes(message));
         }
 
@@ -48,8 +45,6 @@ namespace NsqSharp.Api
         public string Publish(string topic, byte[] message)
         {
             ValidateTopic(topic);
-            if (message == null)
-                throw new ArgumentNullException("message");
 
             string route = string.Format("/pub?topic={0}", topic);
             return Post(route, message);
@@ -65,12 +60,9 @@ namespace NsqSharp.Api
         public string PublishMultiple(string topic, IEnumerable<string> messages)
         {
             ValidateTopic(topic);
-            if (messages == null)
-                throw new ArgumentNullException("messages");
-
             var messagesArray = messages.ToArray();
             if (messagesArray.Length == 0)
-                return null;
+                return string.Empty;
 
             string body = string.Join("\n", messagesArray);
 
@@ -85,17 +77,14 @@ namespace NsqSharp.Api
         /// <param name="topic">The topic.</param>
         /// <param name="messages">The messages.</param>
         /// <returns>The response from the nsqd HTTP server.</returns>
-        [SuppressMessage("Microsoft.Usage", "CA2202:Do not dispose objects multiple times")]
         public string PublishMultiple(string topic, IEnumerable<byte[]> messages)
         {
             ValidateTopic(topic);
-            if (messages == null)
-                throw new ArgumentNullException("messages");
 
-            ICollection<byte[]> msgList = messages as ICollection<byte[]> ?? messages.ToList();
+            ICollection<byte[]> msgList = messages as ICollection<byte[]> ?? [.. messages];
 
             if (msgList.Count == 0)
-                return null;
+                return string.Empty;
 
             byte[] body;
             using (var memoryStream = new MemoryStream())
@@ -209,10 +198,8 @@ namespace NsqSharp.Api
             byte[] respBody = Request(endpoint, HttpMethod.Get, _timeoutMilliseconds);
 
             var serializer = new DataContractJsonSerializer(typeof(NsqdStats));
-            using (var memoryStream = new MemoryStream(respBody))
-            {
-                return ((NsqdStats)serializer.ReadObject(memoryStream));
-            }
+            using var memoryStream = new MemoryStream(respBody);
+            return ((NsqdStats)serializer.ReadObject(memoryStream));
         }
     }
 

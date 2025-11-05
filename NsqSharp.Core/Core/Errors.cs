@@ -135,7 +135,7 @@ namespace NsqSharp.Core
         }
 
         /// <summary>Initializes a new instance of the ErrIdentify class.</summary>
-        public ErrIdentify(string reason, Exception innerException)
+        public ErrIdentify(string reason, Exception? innerException)
             : base(string.Format("failed to IDENTIFY - {0}", reason), innerException)
         {
             Reason = reason;
@@ -169,7 +169,7 @@ namespace NsqSharp.Core
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             if (info == null)
-                throw new ArgumentNullException("info");
+                throw new ArgumentNullException(nameof(info));
 
             info.AddValue("Reason", Reason);
 

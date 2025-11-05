@@ -336,12 +336,12 @@ namespace NsqSharp.Tests
             switch (body)
             {
                 case "requeue":
-                    message.Requeue();
+                    message.ReQueue();
                     break;
                 case "requeue_no_backoff_1":
                     if (message.Attempts > 1)
                         break;
-                    message.RequeueWithoutBackoff(delay: null);
+                    message.ReQueueWithoutBackOff(delay: null);
                     break;
                 case "good":
                     break;

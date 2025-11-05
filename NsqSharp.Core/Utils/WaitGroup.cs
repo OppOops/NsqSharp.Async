@@ -11,7 +11,7 @@ namespace NsqSharp.Utils
     public class WaitGroup
     {
         private readonly ManualResetEvent _wait = new ManualResetEvent(initialState: true);
-        private readonly object _doneLocker = new object();
+        private readonly object _doneLocker = new();
         private int _count;
         private bool _done = true;
 
