@@ -118,19 +118,28 @@ namespace NsqSharp.Core
             Handler = new CoreNsqConnectionHandler(ctx, _conn, this.logger ?? null);
         }
 
-        public IdentifyResponse HandShake(Action<INsqCommandWritter> initialHandshake)
+        public IdentifyResponse? HandShake(Action<INsqCommandWritter> initialHandshake)
         {
-            if(IsHandshaked)
-                return LastResult ?? new IdentifyResponse(); // already handshaked
-            if(ConnectionContext == null)
-                throw new Exception("Call Dial() before HandShake()");
-            if (Connection == null)
-                throw new Exception("Call Dial() before HandShake()");
-            if (Handler == null)
-                throw new Exception("Call Dial() before HandShake()");
-            IsHandshaked = true;
-            LastResult = ConnectionContext.Handshake(Connection, Handler, initialHandshake);
-            return LastResult;
+            try
+            {
+                if (IsHandshaked)
+                    return LastResult; // already handshaked
+                if (ConnectionContext == null)
+                    throw new Exception("Call Dial() before HandShake()");
+                if (Connection == null)
+                    throw new Exception("Call Dial() before HandShake()");
+                if (Handler == null)
+                    throw new Exception("Call Dial() before HandShake()");
+                IsHandshaked = true;
+                LastResult = ConnectionContext.Handshake(Connection, Handler, initialHandshake);
+                return LastResult;
+            }
+            catch
+            {
+                Handler?.Close();
+                throw;
+            }
+           
         }
 
         public NsqContext GetNsqContext()
@@ -144,7 +153,7 @@ namespace NsqSharp.Core
         {
             if (ConnectionContext == null || LastResult == null || Handler == null)
                 throw new Exception("Does not connected or handshaked");
-            return new RunTimeNsqConnectionHandler(Handler, ConnectionContext.CommandWriter);
+            return new RunTimeNsqConnectionHandler(Handler.ConnectionCancelContext, Handler, ConnectionContext.CommandWriter);
         }
     }
 
@@ -225,7 +234,7 @@ namespace NsqSharp.Core
         /// handshake the nsqd connection
         /// (including IDENTIFY) and returns the IdentifyResponse
         /// </summary>
-        internal IdentifyResponse Handshake(
+        internal IdentifyResponse? Handshake(
             ITcpConn _conn,
             CoreNsqConnectionHandler handler,
             Action<INsqCommandWritter> initialHandshake)
@@ -243,11 +252,12 @@ namespace NsqSharp.Core
                 throw new Exception(string.Format("[{0}] failed to write magic - {1}", _addr, ex.Message), ex);
             }
 
-            IdentifyResponse resp;
+            IdentifyResponse? resp;
             try
             {
                 resp = NsqConnectionHandshake.Identify(this._config, handler, handler, this._logger, _conn);
-                this._maxRdyCount = resp.MaxRdyCount;
+                if(resp != null)
+                    this._maxRdyCount = resp.MaxRdyCount;
             }
             catch (ErrIdentify ex)
             {
@@ -268,7 +278,7 @@ namespace NsqSharp.Core
 
             try
             {
-                if (resp.AuthRequired)
+                if (resp != null && resp.AuthRequired)
                 {
                     if (string.IsNullOrEmpty(_config.AuthSecret))
                     {
@@ -459,8 +469,7 @@ namespace NsqSharp.Core
             return _conn.Write(p, offset, length);
         }
 
-        private int _bigBufSize = 4096;
-        private byte[] _bigBuf = new byte[4096];
+        
 
         /// <summary>
         /// WriteCommand is a thread safe method to write a Command
@@ -468,6 +477,8 @@ namespace NsqSharp.Core
         /// </summary>
         public void WriteCommand(Command cmd)
         {
+            int _bigBufSize = 4096;
+            byte[] _bigBuf = new byte[4096];
             try
             {
                 int size = cmd.GetByteCount();
@@ -480,6 +491,7 @@ namespace NsqSharp.Core
                 cmd.WriteTo(this, _bigBuf);
 
                 _conn.Flush();
+
             }
             catch (Exception ex)
             {
@@ -513,15 +525,17 @@ namespace NsqSharp.Core
     {
         private INsqConnection Handler;
         private readonly ChannelWriter<Command> Writer;
-        public RunTimeNsqConnectionHandler(INsqConnection handler, ChannelWriter<Command> writer)
+        private readonly CancellationTokenSource Context;
+        public RunTimeNsqConnectionHandler(CancellationTokenSource ctx, INsqConnection handler, ChannelWriter<Command> writer)
         {
             Writer = writer;
             Handler = handler;
+            Context = ctx;
         }
 
         public void Close()
         {
-            Handler.Close();
+            this.Context.Cancel();
         }
 
         public IdentifyResponse Connect(Action<INsqCommandWritter> initialHandshake)
@@ -565,7 +579,7 @@ namespace NsqSharp.Core
 
     internal static class NsqConnectionHandshake
     {
-        public static IdentifyResponse Identify(Config _config, 
+        public static IdentifyResponse? Identify(Config _config, 
             INsqCommandWritter commandWriter, 
             IReader reader, 
             ILogger? logger,
@@ -622,7 +636,7 @@ namespace NsqSharp.Core
                 // i.e. it was a JSON response
                 if (data[0] != '{')
                 {
-                    throw new ErrIdentify(json);
+                    return null;
                 }
 
                 string respJson = Encoding.UTF8.GetString(data);

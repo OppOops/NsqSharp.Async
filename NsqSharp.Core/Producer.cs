@@ -301,9 +301,9 @@ namespace NsqSharp
         /// </summary>
         /// <param name="topic">The topic to publish to.</param>
         /// <param name="value">The message body.</param>
-        public void Publish(string topic, string value)
+        public void Publish(string topic, string value, bool fireAndForgot = true)
         {
-            Publish(topic, Encoding.UTF8.GetBytes(value));
+            Publish(topic, Encoding.UTF8.GetBytes(value), fireAndForgot);
         }
 
         /// <summary>
@@ -416,7 +416,6 @@ namespace NsqSharp
                 catch (Exception ex)
                 {
                     log(LogLevel.Error, string.Format("({0}) error connecting to nsqd - {1}", _addr, ex.Message));
-                    _conn.Close();
                     throw;
                 }
 
