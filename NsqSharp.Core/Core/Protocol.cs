@@ -75,7 +75,7 @@ namespace NsqSharp.Core
 
     public class NsqBufferContext : IDisposable
     {
-        public ReadOnlyMemory<byte> Body => Body.Slice(Offset, BodyLength);
+        public ReadOnlyMemory<byte> Body => BodyBuffer.AsMemory(Offset, BodyLength);
 
         private int Offset = 0;
         private int BodyLength = 0;

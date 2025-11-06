@@ -721,7 +721,7 @@ namespace NsqSharp.Core
 
         public static async Task AuthAsync(CoreNsqConnectionHandler handler, string secret, ILogger? logger, CancellationToken token)
         {
-            handler.WriteCommand(Command.Auth(secret));
+            await handler.WriteCommandAsync(Command.Auth(secret), token);
             using var buffer = new NsqBufferContext();
             await buffer.ReadUnpackedResponseAsync(handler, token);
             
@@ -859,11 +859,11 @@ namespace NsqSharp.Core
             var token = writeLoopCtx.LoopTokenSource.Token;
             var select =
             Select
-                .CaseReceive(_cmdChan, cmd =>
+                .CaseReceive(_cmdChan, async(cmd, token) =>
                 {
                     try
                     {
-                        handler.WriteCommand(cmd);
+                        await handler.WriteCommandAsync(cmd, token);
                     }
                     catch (Exception ex)
                     {
@@ -874,12 +874,12 @@ namespace NsqSharp.Core
                     // TODO: Create PR to remove unnecessary continue in go-nsq
                     // https://github.com/nsqio/go-nsq/blob/v1.0.3/conn.go#L552
                 })
-                .CaseReceive(_cmdTraceChan, (pair) =>
+                .CaseReceive(_cmdTraceChan, async(pair, token) =>
                 {
                     var (cmd, tcs) = pair;
                     try
                     {
-                        handler.WriteCommand(cmd);
+                        await handler.WriteCommandAsync(cmd, token);
                         tcs.TrySetResult(true);
                     }
                     catch (Exception ex)
