@@ -24,7 +24,7 @@ You can also build these files from source: https://github.com/nsqio/nsq (offici
 
 ## C# Examples
 
-`dotnet add package NsqSharp.Async --version 1.0.0`
+`dotnet add package NsqSharp.Async --version 1.0.1`
 
 #### Simple Producer
 
