@@ -16,8 +16,6 @@ namespace NsqSharp.Utils
         // https://msdn.microsoft.com/en-us/library/system.net.sockets.socket.setsocketoption.aspx
 
         private readonly TcpClient _tcpClient;
-        private readonly object _readLocker = new();
-        private readonly object _writeLocker = new();
         private readonly object _closeLocker = new();
         private readonly string _hostname;
         private Stream _networkStream;
@@ -37,37 +35,32 @@ namespace NsqSharp.Utils
             return new TcpConn(c, hostName);
         }
 
-        public void UpgradeTLS(TlsConfig configTLS)
+        public async Task UpgradeTlsAsync(TlsConfig configTLS)
         {
-            lock (_readLocker)
+            const bool leaveInnerStreamOpen = false;
+
+            var enabledSslProtocols = configTLS.GetEnabledSslProtocols();
+
+            string? errorMessage = null;
+
+            var sslStream = new SslStream(
+                _networkStream,
+                leaveInnerStreamOpen,
+                (sender, certificate, chain, sslPolicyErrors) =>
+                    ValidateCertificates(chain, sslPolicyErrors, configTLS, out errorMessage)
+            );
+
+            try
             {
-                lock (_writeLocker)
-                {
-                    const bool leaveInnerStreamOpen = false;
-
-                    var enabledSslProtocols = configTLS.GetEnabledSslProtocols();
-
-                    string? errorMessage = null;
-
-                    var sslStream = new SslStream(
-                        _networkStream,
-                        leaveInnerStreamOpen,
-                        (sender, certificate, chain, sslPolicyErrors) =>
-                            ValidateCertificates(chain, sslPolicyErrors, configTLS, out errorMessage)
-                    );
-
-                    try
-                    {
-                        sslStream.AuthenticateAsClient(_hostname, new X509Certificate2Collection(), enabledSslProtocols, configTLS.CheckCertificateRevocation);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception(string.Format("{0} - {1}", ex.Message, errorMessage), ex);
-                    }
-
-                    _networkStream = sslStream;
-                }
+                await sslStream.AuthenticateAsClientAsync(_hostname, 
+                    new X509Certificate2Collection(), enabledSslProtocols, configTLS.CheckCertificateRevocation);
             }
+            catch (Exception ex)
+            {
+                throw new Exception(string.Format("{0} - {1}", ex.Message, errorMessage), ex);
+            }
+
+            _networkStream = sslStream;
         }
 
         private static bool ValidateCertificates(X509Chain chain, SslPolicyErrors sslPolicyErrors, TlsConfig tlsConfig, out string errorMessage)
@@ -107,34 +100,43 @@ namespace NsqSharp.Utils
         {
             if (_isClosed)
                 throw new ConnectionClosedException();
-            lock (_readLocker)
-            {
-                int byteLength = b.Length;
+            int byteLength = b.Length;
 
-                int total = _networkStream.Read(b, 0, byteLength);
-                if (total == byteLength || total == 0)
-                    return total;
-
-                while (total < byteLength)
-                {
-                    int n = _networkStream.Read(b, total, byteLength - total);
-                    if (n == 0)
-                        return total;
-                    total += n;
-                }
+            int total = _networkStream.Read(b, 0, byteLength);
+            if (total == byteLength || total == 0)
                 return total;
+
+            while (total < byteLength)
+            {
+                int n = _networkStream.Read(b, total, byteLength - total);
+                if (n == 0)
+                    return total;
+                total += n;
             }
+            return total;
         }
 
-        public int Write(byte[] b, int offset, int length)
+        public async ValueTask ReadExactlyAsync(Memory<byte> memory, CancellationToken cancellationToken = default)
         {
             if (_isClosed)
                 throw new ConnectionClosedException();
-            lock (_writeLocker)
-            {
-                _networkStream.Write(b, offset, length);
-                return length;
-            }
+
+            await _networkStream.ReadExactlyAsync(memory, cancellationToken);
+        }
+
+        public int Write(ReadOnlyMemory<byte> data)
+        {
+            if (_isClosed)
+                throw new ConnectionClosedException();
+            _networkStream.Write(data.Span);
+            return data.Length;
+        }
+
+        public async ValueTask WriteAsync(ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default)
+        {
+            if (_isClosed)
+                throw new ConnectionClosedException();
+            await _networkStream.WriteAsync(memory, cancellationToken);
         }
 
         public void Close()
@@ -142,35 +144,32 @@ namespace NsqSharp.Utils
             if (_isClosed)
                 return;
 
-            lock (_writeLocker)
+            lock (_closeLocker)
             {
-                lock (_closeLocker)
-                {
-                    if (_isClosed)
-                        return;
-                    _isClosed = true;
-                }
-                try
-                {
-                    _networkStream.Flush();
-
-                    ReadTimeout = TimeSpan.FromMilliseconds(10);
-                    WriteTimeout = TimeSpan.FromMilliseconds(10);
-
-                    _networkStream.Close();
-                    _tcpClient.Close();
-                }
-                catch (SocketException)
-                {
-                }
-                catch (IOException)
-                {
-                }
-                catch (ObjectDisposedException)
-                {
-                }
-                
+                if (_isClosed)
+                    return;
+                _isClosed = true;
             }
+            try
+            {
+                _networkStream.Flush();
+
+                ReadTimeout = TimeSpan.FromMilliseconds(10);
+                WriteTimeout = TimeSpan.FromMilliseconds(10);
+
+                _networkStream.Close();
+                _tcpClient.Close();
+            }
+            catch (SocketException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+                
         }
 
         public void Flush()
@@ -178,10 +177,7 @@ namespace NsqSharp.Utils
             if (_isClosed)
                 throw new ConnectionClosedException();
 
-            lock (_writeLocker)
-            {
-                _networkStream.Flush();
-            }
+            _networkStream.Flush();
         }
     }
 }

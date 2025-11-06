@@ -44,14 +44,14 @@ namespace NsqSharp.Tests.Utils
             var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4192).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
-            tcpConn.Write(helloMsg, 0, helloMsg.Length);
+            tcpConn.Write(helloMsg);
 
             var recv = new byte[helloMsg.Length];
             tcpConn.Read(recv);
             Console.WriteLine(Encoding.UTF8.GetString(recv));
 
             var quitMsg = Encoding.UTF8.GetBytes("QUIT\n");
-            tcpConn.Write(quitMsg, 0, quitMsg.Length);
+            tcpConn.Write(quitMsg);
 
             recv = new byte[quitMsg.Length];
             tcpConn.Read(recv);
@@ -94,14 +94,14 @@ namespace NsqSharp.Tests.Utils
             var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4193).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
-            tcpConn.Write(helloMsg, 0, helloMsg.Length);
+            tcpConn.Write(helloMsg);
 
             var recv = new byte[helloMsg.Length];
             tcpConn.Read(recv);
             Console.WriteLine(Encoding.UTF8.GetString(recv));
 
             var quitMsg = Encoding.UTF8.GetBytes("QUIT\n");
-            tcpConn.Write(quitMsg, 0, quitMsg.Length);
+            tcpConn.Write(quitMsg);
 
             recv = new byte[quitMsg.Length];
             tcpConn.Read(recv);
@@ -111,7 +111,7 @@ namespace NsqSharp.Tests.Utils
 
             tcpConn.Close();
 
-            Assert.Throws<ConnectionClosedException>(() => tcpConn.Write(quitMsg, 0, quitMsg.Length));
+            Assert.Throws<ConnectionClosedException>(() => tcpConn.Write(quitMsg));
         }
 
         [Test]
@@ -146,14 +146,14 @@ namespace NsqSharp.Tests.Utils
             var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4194).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
-            tcpConn.Write(helloMsg, 0, helloMsg.Length);
+            tcpConn.Write(helloMsg);
 
             var recv = new byte[helloMsg.Length];
             tcpConn.Read(recv);
             Console.WriteLine(Encoding.UTF8.GetString(recv));
 
             var quitMsg = Encoding.UTF8.GetBytes("QUIT\n");
-            tcpConn.Write(quitMsg, 0, quitMsg.Length);
+            tcpConn.Write(quitMsg);
 
             recv = new byte[quitMsg.Length];
             tcpConn.Close();
@@ -195,14 +195,14 @@ namespace NsqSharp.Tests.Utils
             var tcpConn = TcpConn.ConnectAsync(IPAddress.Loopback.ToString(), 4195).Result;
 
             var helloMsg = Encoding.UTF8.GetBytes("Hello\n");
-            tcpConn.Write(helloMsg, 0, helloMsg.Length);
+            tcpConn.Write(helloMsg);
 
             var recv = new byte[helloMsg.Length];
             tcpConn.Read(recv);
             Console.WriteLine(Encoding.UTF8.GetString(recv));
 
             var quitMsg = Encoding.UTF8.GetBytes("QUIT\n");
-            tcpConn.Write(quitMsg, 0, quitMsg.Length);
+            tcpConn.Write(quitMsg);
 
             tcpConn.Close();
 

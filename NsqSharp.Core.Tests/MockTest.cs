@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using NsqSharp.Core;
 using NsqSharp.Tests.Utils.Extensions;
 using NsqSharp.Utils;
@@ -32,7 +33,7 @@ namespace NsqSharp.Tests
         }
 
         [Test]
-        public void TestConsumerBackoff()
+        public async Task TestConsumerBackoff()
         {
             var msgIDGood = Encoding.UTF8.GetBytes("1234567890asdfgh");
             var msgGood = new Message(msgIDGood, Encoding.UTF8.GetBytes("good"));
@@ -64,17 +65,9 @@ namespace NsqSharp.Tests
             config.BackoffMultiplier = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
-            q.ConnectToNsqd(n.tcpAddr);
+            await q.ConnectToNsqdAsync([n.tcpAddr]);
 
-            bool timeout = false;
-            Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5000));
-                if(n.exitChan.Task.IsCompleted == false)
-                {
-                    timeout = true;
-                }
-            }).Wait();
+            bool timeout = await n.Wait(TimeSpan.FromMilliseconds(5000));
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -119,7 +112,7 @@ namespace NsqSharp.Tests
         private const long Millisecond = 1_000_000;
 
         [Test]
-        public void TestConsumerRequeueNoBackoff()
+        public async Task TestConsumerRequeueNoBackoff()
         {
             var msgIDGood = Encoding.UTF8.GetBytes("1234567890asdfgh");
             var msgIDRequeue = Encoding.UTF8.GetBytes("reqvb67890asdfgh");
@@ -150,17 +143,9 @@ namespace NsqSharp.Tests
             config.BackoffMultiplier = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
-            q.ConnectToNsqd(n.tcpAddr);
+            await q.ConnectToNsqdAsync([n.tcpAddr]);
 
-            bool timeout = false;
-            Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5000));
-                if (n.exitChan.Task.IsCompleted == false)
-                {
-                    timeout = true;
-                }
-            }).Wait();
+            bool timeout = await n.Wait(TimeSpan.FromMilliseconds(5000));
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -196,7 +181,7 @@ namespace NsqSharp.Tests
         }
 
         [Test]
-        public void TestConsumerBackoffDisconnect()
+        public async Task TestConsumerBackoffDisconnect()
         {
             var msgIDGood = Encoding.UTF8.GetBytes("1234567890asdfgh");
             var msgIDRequeue = Encoding.UTF8.GetBytes("reqvb67890asdfgh");
@@ -228,17 +213,9 @@ namespace NsqSharp.Tests
             config.RDYRedistributeInterval = TimeSpan.FromMilliseconds(10);
             var q = new Consumer(topicName, "ch", new ConsoleLogger(LogLevel.Debug), config);
             q.AddHandler(new testHandler());
-            q.ConnectToNsqd(n.tcpAddr);
+            await q.ConnectToNsqdAsync([n.tcpAddr]);
 
-            bool timeout = false;
-            Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5000));
-                if (n.exitChan.Task.IsCompleted == false)
-                {
-                    timeout = true;
-                }
-            }).Wait();
+            bool timeout = await n.Wait(TimeSpan.FromMilliseconds(5000));
 
             Assert.IsFalse(timeout, "timeout");
 
@@ -288,15 +265,7 @@ namespace NsqSharp.Tests
 
             n = new mockNSQD(script, IPAddress.Loopback, n.listenPort);
 
-            bool timeout2 = false;
-            Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(5000));
-                if (n.exitChan.Task.IsCompleted == false)
-                {
-                    timeout = true;
-                }
-            }).Wait();
+            bool timeout2 = await n.Wait(TimeSpan.FromMilliseconds(5000));
 
             Assert.IsFalse(timeout2, "timeout2");
 
@@ -328,6 +297,8 @@ namespace NsqSharp.Tests
 
     public class testHandler : IHandler
     {
+        public bool RunAsAsync => false;
+
         public void HandleMessage(IMessage message)
         {
             string body = Encoding.UTF8.GetString(message.Body);
@@ -350,6 +321,11 @@ namespace NsqSharp.Tests
                 default:
                     throw new InvalidOperationException(string.Format("body '{0}' not recognized", body));
             }
+        }
+
+        public Task HandleMessageAsync(IMessage message, CancellationToken token)
+        {
+            throw new NotImplementedException();
         }
 
         public void LogFailedMessage(IMessage message)
@@ -411,6 +387,26 @@ namespace NsqSharp.Tests
             listenPort = ((IPEndPoint)tcpListener.LocalEndpoint).Port;
 
             GoFunc.Run(listen, "mockNSQD:listen");
+        }
+
+        public async Task<bool> Wait(TimeSpan timeoutDuration)
+        {
+            var cts = new System.Threading.CancellationTokenSource(timeoutDuration);
+            bool isTtimeout = false;
+            cts.Token.Register(()=>
+            {
+                if (exitChan.Task.IsCompleted == false)
+                {
+                    isTtimeout = true;
+                }
+            });
+            try
+            {
+                await Task.Delay(timeoutDuration, cts.Token);
+            }
+            catch (OperationCanceledException) { }
+            
+            return isTtimeout;
         }
 
         private void listen()

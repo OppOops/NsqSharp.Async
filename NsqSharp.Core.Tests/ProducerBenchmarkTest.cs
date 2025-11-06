@@ -84,7 +84,7 @@ namespace NsqSharp.Tests
                 byte[] body = new byte[512];
 
                 var p = new Producer("127.0.0.1:4150");
-                p.Connect();
+                p.ConnectAsync();
 
                 var startCh = Channel.CreateUnbounded<bool>();
                 var wg = new WaitGroup();

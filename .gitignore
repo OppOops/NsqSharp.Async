@@ -16,3 +16,4 @@ nsq-0.3.2-bin/*.dat
 build_web/
 build_vs/
 .vs/
+.env

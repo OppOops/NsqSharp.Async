@@ -326,7 +326,7 @@ namespace NsqSharp
         {
             if (_state != (int)State.Connected)
             {
-                var task = Connect();
+                var task = ConnectAsync();
                 task.ConfigureAwait(false).GetAwaiter().GetResult();
             }
         }
@@ -334,7 +334,7 @@ namespace NsqSharp
         private async Task CheckAndTryConnectAsync()
         {
             if (_state != (int)State.Connected)
-                await Connect();
+                await ConnectAsync();
         }
 
         private void SendCommandWait(Command cmd)
@@ -385,7 +385,7 @@ namespace NsqSharp
         /// </summary>
         /// <exception cref="ErrStopped">Thrown if the Producer has been stopped.</exception>
         /// <exception cref="ErrNotConnected">Thrown if the Producer is currently waiting to close and reconnect.</exception>
-        public async Task Connect()
+        public async Task ConnectAsync()
         {
             try
             {
@@ -406,11 +406,12 @@ namespace NsqSharp
                 log(LogLevel.Info, string.Format("{0} connecting to nsqd", _addr));
 
                 var builder = new NsqConnectionBuilder(_addr, _config, this);
+                var token = _exitChanTokenSource.Token;
                 builder.SetLogger(_logger, string.Format("P{0} ({{0}})", _id));
                 try
                 {
-                    await builder.Dial();
-                    builder.HandShake(_ => { });
+                    await builder.DialAsync(token);
+                    await builder.HandShakeAsync((_, __) => Task.CompletedTask, token);
                     _conn = builder.GetRuntimeConnection();
                 }
                 catch (Exception ex)
@@ -510,14 +511,14 @@ namespace NsqSharp
             _logger.Output(lvl, string.Format("P{0} {1}", _id, line));
         }
 
-        void IConnDelegate.OnResponse(NsqContext c, byte[] data)
+        void IConnDelegate.OnResponse(NsqContext c, ReadOnlyMemory<byte> data)
         {
-            _responseChan.Writer.TryWrite(data);
+            _responseChan.Writer.TryWrite(data.ToArray());
         }
 
-        void IConnDelegate.OnError(NsqContext c, byte[] data)
+        void IConnDelegate.OnError(NsqContext c, ReadOnlyMemory<byte> data)
         {
-            _errorChan.Writer.TryWrite(data);
+            _errorChan.Writer.TryWrite(data.ToArray());
         }
 
         void IConnDelegate.OnIOError(NsqContext c, Exception err)

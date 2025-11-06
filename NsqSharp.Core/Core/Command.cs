@@ -117,51 +117,51 @@ namespace NsqSharp.Core
         /// It is suggested that the target Writer is buffered
         /// to avoid performing many system calls.
         /// </summary>
-        public long WriteTo(IWriter w)
+        public void WriteTo(IWriter w)
         {
-            var buf = new byte[GetByteCount()];
-            return WriteTo(w, buf);
+            WriteToAsync(w, new byte[GetByteCount()]).AsTask().Wait();
         }
 
-        /// <summary>
-        /// WriteTo implements the WriterTo interface and
-        /// serializes the Command to the supplied Writer.
-        ///
-        /// It is suggested that the target Writer is buffered
-        /// to avoid performing many system calls.
-        /// </summary>
-        internal long WriteTo(IWriter w, byte[] buf)
+        public ReadOnlyMemory<byte> SerializeToMemory(Memory<byte> buffer)
         {
             int j = 0;
 
-            int count = Name.Length;
-            Buffer.BlockCopy(Name, 0, buf, j, count);
-            j += count;
+            Name.AsSpan().CopyTo(
+                buffer.Slice(j, Name.Length).Span
+            );
+            j += Name.Length;
 
             if (Params != null)
             {
                 foreach (var param in Params)
                 {
-                    buf[j++] = byteSpace;
-                    count = param.Length;
-                    Buffer.BlockCopy(param, 0, buf, j, count);
-                    j += count;
+                    buffer.Span[j++] = byteSpace;
+                    param.AsSpan().CopyTo(
+                        buffer.Slice(j, param.Length).Span
+                    );
+                    j += param.Length;
                 }
             }
 
-            buf[j++] = byteNewLine;
+            buffer.Span[j++] = byteNewLine;
 
             if (Body != null)
             {
-                _bigEndian.PutUint32(buf, Body.Length, j);
+                _bigEndian.PutUint32(buffer, Body.Length, j);
                 j += 4;
 
-                count = Body.Length;
-                Buffer.BlockCopy(Body, 0, buf, j, count);
-                j += count;
+                Body.AsSpan().CopyTo(
+                    buffer.Slice(j, Body.Length).Span
+                );
+                j += Body.Length;
             }
+            return buffer;
+        }
 
-            return w.Write(buf, 0, j);
+        internal ValueTask WriteToAsync(IWriter w, Memory<byte> buf, CancellationToken token = default)
+        {
+            this.SerializeToMemory(buf);
+            return w.WriteAsync(buf, token);
         }
 
         /// <summary>

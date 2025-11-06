@@ -10,6 +10,8 @@
         /// </summary>
         /// <param name="b">The byte array to populate.</param>
         /// <returns>The number of bytes read.</returns>
-        int Read(byte[] b);
+        //int Read(byte[] b);
+
+        ValueTask ReadExactlyAsync(Memory<byte> memory, CancellationToken cancellationToken = default);
     }
 }

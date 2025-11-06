@@ -1,11 +1,12 @@
-﻿using System;
+﻿using CommunityToolkit.HighPerformance;
+using NsqSharp.Core;
+using NsqSharp.Utils;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
-using NsqSharp.Core;
-using NsqSharp.Utils;
 
 namespace NsqSharp
 {
@@ -24,11 +25,11 @@ namespace NsqSharp
         private static readonly DateTime _epoch = new DateTime(1970, 1, 1);
 
         internal byte[] ID { get; set; }
-        internal IMessageDelegate Delegate { get; set; }
+        internal IMessageDelegate? Delegate { get; set; }
 
         private int _autoResponseDisabled;
         private int _responded;
-        private string _idHexString;
+        private string? _idHexString;
 
         /// <summary>The message body byte array.</summary>
         /// <value>The message body byte array.</value>
@@ -48,7 +49,7 @@ namespace NsqSharp
 
         /// <summary>The nsqd address which sent this message.</summary>
         /// <value>The nsqd address which sent this message.</value>
-        public string NsqdAddress { get; internal set; }
+        public string NsqdAddress { get; internal set; } = string.Empty;
 
         /// <summary>Initializes a new instance of the <see cref="Message"/> class.</summary>
         /// <remarks>
@@ -110,7 +111,7 @@ namespace NsqSharp
             {
                 return;
             }
-            Delegate.OnFinish(this);
+            Delegate?.OnFinish(this);
         }
 
         /// <summary>
@@ -131,7 +132,7 @@ namespace NsqSharp
             {
                 return;
             }
-            Delegate.OnTouch(this);
+            Delegate?.OnTouch(this);
         }
 
         /// <summary>
@@ -169,7 +170,7 @@ namespace NsqSharp
                 return;
             }
 
-            var requeueTimeSpan = Delegate.OnRequeue(this, delay, backoff);
+            var requeueTimeSpan = Delegate?.OnRequeue(this, delay, backoff);
             ReQueuedUntil = DateTime.UtcNow + requeueTimeSpan;
             BackOffTriggered = backoff;
         }
@@ -220,9 +221,9 @@ namespace NsqSharp
         /// <exception cref="ArgumentNullException">Thrown <paramref name="data"/> is <c>null</c>.</exception>
         /// <param name="data">The fully encoded message.</param>
         /// <returns>The decoded message.</returns>
-        public static Message DecodeMessage(byte[] data)
+        public static Message DecodeMessage(ReadOnlyMemory<byte> data)
         {
-            using var memoryStream = new MemoryStream(data);
+            using var memoryStream = data.AsStream();
             using var binaryReader = new BinaryReader(memoryStream);
             ulong timestamp = Binary.BigEndian.UInt64(binaryReader);
             ushort attempts = Binary.BigEndian.UInt16(binaryReader);

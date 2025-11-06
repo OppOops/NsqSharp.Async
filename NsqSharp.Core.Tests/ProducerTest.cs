@@ -242,7 +242,7 @@ namespace NsqSharp.Tests
             }
         }
 
-        private void readMessages(string topicName, int msgCount)
+        private async Task readMessages(string topicName, int msgCount)
         {
             var config = new Config();
             config.DefaultRequeueDelay = TimeSpan.Zero;
@@ -252,7 +252,7 @@ namespace NsqSharp.Tests
             var h = new ConsumerHandler { q = q };
             q.AddHandler(h);
 
-            q.ConnectToNsqd("127.0.0.1:4150");
+            await q.ConnectToNsqdAsync(["127.0.0.1:4150"]);
             h.Fin.Wait();
 
             Assert.AreEqual(msgCount, h.messagesGood, "should have handled a diff number of messages");
@@ -520,6 +520,8 @@ namespace NsqSharp.Tests
 
         public Task Fin => Finished.Task;
 
+        public bool RunAsAsync => false;
+
         public void LogFailedMessage(IMessage message)
         {
             messagesFailed++;
@@ -539,6 +541,11 @@ namespace NsqSharp.Tests
                 throw new Exception(string.Format("message 'action' was not correct {0}", msg));
             }
             messagesGood++;
+        }
+
+        public Task HandleMessageAsync(IMessage message, CancellationToken token)
+        {
+            throw new NotImplementedException();
         }
     }
 

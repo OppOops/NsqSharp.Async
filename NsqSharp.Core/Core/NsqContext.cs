@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -7,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CommunityToolkit.HighPerformance;
 using NsqSharp.Utils;
 using NsqSharp.Utils.Channels;
 using NsqSharp.Utils.Extensions;
@@ -75,6 +77,8 @@ namespace NsqSharp.Core
     internal interface INsqCommandWritter
     {
         void WriteCommand(Command cmd);
+
+        ValueTask WriteCommandAsync(Command cmd, CancellationToken token);
     }
 
     internal class NsqConnectionBuilder
@@ -103,7 +107,7 @@ namespace NsqSharp.Core
             this.logFmt = logFormat;
         }
 
-        public async Task Dial(CancellationToken token = default)
+        public async Task DialAsync(CancellationToken token = default)
         {
             var ctx = new NsqContext(_addr, _config, _delegate);
             if(this.logger !=null && !string.IsNullOrWhiteSpace(this.logFmt))
@@ -118,7 +122,8 @@ namespace NsqSharp.Core
             Handler = new CoreNsqConnectionHandler(ctx, _conn, this.logger ?? null);
         }
 
-        public IdentifyResponse? HandShake(Action<INsqCommandWritter> initialHandshake)
+        public async Task<IdentifyResponse?> HandShakeAsync(Func<INsqCommandWritter, CancellationToken, Task> initialHandshake, 
+            CancellationToken token)
         {
             try
             {
@@ -131,7 +136,7 @@ namespace NsqSharp.Core
                 if (Handler == null)
                     throw new Exception("Call Dial() before HandShake()");
                 IsHandshaked = true;
-                LastResult = ConnectionContext.Handshake(Connection, Handler, initialHandshake);
+                LastResult = await ConnectionContext.Handshake(Connection, Handler, initialHandshake, token);
                 return LastResult;
             }
             catch
@@ -234,17 +239,18 @@ namespace NsqSharp.Core
         /// handshake the nsqd connection
         /// (including IDENTIFY) and returns the IdentifyResponse
         /// </summary>
-        internal IdentifyResponse? Handshake(
+        internal async Task<IdentifyResponse?> Handshake(
             ITcpConn _conn,
             CoreNsqConnectionHandler handler,
-            Action<INsqCommandWritter> initialHandshake)
+            Func<INsqCommandWritter, CancellationToken, Task> initialHandshake,
+            CancellationToken token)
         {
             _conn.ReadTimeout = _config.ReadTimeout;
             _conn.WriteTimeout = _config.WriteTimeout;
             var cts = ConnectionCancelContext = handler.ConnectionCancelContext;
             try
             {
-                handler.Write(Protocol.MagicV2, 0, Protocol.MagicV2.Length);
+                await handler.WriteAsync(Protocol.MagicV2.AsMemory(0, Protocol.MagicV2.Length), token);
             }
             catch (Exception ex)
             {
@@ -255,7 +261,7 @@ namespace NsqSharp.Core
             IdentifyResponse? resp;
             try
             {
-                resp = NsqConnectionHandshake.Identify(this._config, handler, handler, this._logger, _conn);
+                resp = await NsqConnectionHandshake.IdentifyAsync(this._config, handler, handler, this._logger, _conn, token);
                 if(resp != null)
                     this._maxRdyCount = resp.MaxRdyCount;
             }
@@ -285,9 +291,9 @@ namespace NsqSharp.Core
                         WriteLog(LogLevel.Error, "Auth Required");
                         throw new Exception("Auth Required");
                     }
-                    NsqConnectionHandshake.Auth(handler, _config.AuthSecret, _logger);
+                    await NsqConnectionHandshake.AuthAsync(handler, _config.AuthSecret, _logger, token);
                 }
-                initialHandshake(handler);
+                await initialHandshake(handler, token);
             }
             catch
             {
@@ -297,7 +303,7 @@ namespace NsqSharp.Core
 
             var readLoopCtx = new RunningLoopContext(handler.ConnectionCancelContext);
             var writeLoopCtx = new RunningLoopContext(handler.ConnectionCancelContext);
-            _ = Task.Run(()=> RunReadLoop(handler, readLoopCtx));
+            _ = RunReadLoop(handler, readLoopCtx);
             _ = RunWriteLoop(handler, writeLoopCtx);
             return resp;
         }
@@ -333,14 +339,18 @@ namespace NsqSharp.Core
             get { return _lastRdyCount; }
         }
 
+        private readonly object _rdyLocker = new();
         /// <summary>
         /// SetRDY stores the specified RDY count
         /// </summary>
         public void SetRDY(long rdy)
         {
-            // TODO: Should this be in lock to sync?
-            _rdyCount = rdy;
-            _lastRdyCount = rdy;
+            lock (_rdyLocker) // atmoic rdy set
+            {
+                _rdyCount = rdy;
+                _lastRdyCount = rdy;
+                WriteCommandToChannel(Command.Ready(rdy));
+            }
         }
 
         private static readonly DateTime _epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -451,47 +461,26 @@ namespace NsqSharp.Core
             ConnectionCancelContext.Cancel();
         }
 
-        /// <summary>
-        /// Read performs a deadlined read on the underlying TCP connection
-        /// </summary>
-        public int Read(byte[] p)
+        public ValueTask ReadExactlyAsync(Memory<byte> memory, CancellationToken cancellationToken = default)
         {
-            // SetReadDeadline handled in Connect
-            return _conn.Read(p);
+            return _conn.ReadExactlyAsync(memory, cancellationToken);
         }
 
-        /// <summary>
-        /// Write performs a deadlined write on the underlying TCP connection
-        /// </summary>
-        public int Write(byte[] p, int offset, int length)
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default)
         {
-            // SetWriteDeadline handled in Connect
-            return _conn.Write(p, offset, length);
+            return _conn.WriteAsync(memory, cancellationToken);
         }
 
-        
-
-        /// <summary>
-        /// WriteCommand is a thread safe method to write a Command
-        /// to this connection, and flush.
-        /// </summary>
-        public void WriteCommand(Command cmd)
+        public async ValueTask WriteCommandAsync(Command cmd, CancellationToken token)
         {
-            int _bigBufSize = 4096;
-            byte[] _bigBuf = new byte[4096];
+            int size = cmd.GetByteCount();
+            byte[] _bigBuf = ArrayPool<byte>.Shared.Rent(size);
             try
             {
-                int size = cmd.GetByteCount();
-                if (size > _bigBufSize)
-                {
-                    _bigBuf = new byte[size];
-                    _bigBufSize = size;
-                }
-
-                cmd.WriteTo(this, _bigBuf);
-
-                _conn.Flush();
-
+                await this.WriteAsync(
+                    cmd.SerializeToMemory(_bigBuf.AsMemory(0, size)), 
+                    token
+                );
             }
             catch (Exception ex)
             {
@@ -500,6 +489,15 @@ namespace NsqSharp.Core
                 this.NsqConnectionInstance.OnContextIOError(ex);
                 throw;
             }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(_bigBuf);
+            }
+        }
+
+        public void WriteCommand(Command cmd)
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -552,6 +550,12 @@ namespace NsqSharp.Core
         {
             Writer.TryWrite(command);
         }
+
+        public ValueTask WriteCommandAsync(Command cmd, CancellationToken token)
+        {
+            Writer.TryWrite(cmd);
+            return ValueTask.CompletedTask;
+        }
     }
 
     internal class EmptyNsqConnectionHandler : INsqConnection
@@ -579,11 +583,12 @@ namespace NsqSharp.Core
 
     internal static class NsqConnectionHandshake
     {
-        public static IdentifyResponse? Identify(Config _config, 
+        public static async Task<IdentifyResponse?> IdentifyAsync(Config _config, 
             INsqCommandWritter commandWriter, 
             IReader reader, 
             ILogger? logger,
-            IConn originalInstance)
+            IConn originalInstance,
+            CancellationToken token)
         {
             var ci = new IdentifyRequest
             {
@@ -620,12 +625,13 @@ namespace NsqSharp.Core
 
             try
             {
+                
+                await commandWriter.WriteCommandAsync(Command.Identify(ci), token);
+                using var buffer = new NsqBufferContext();
+                await buffer.ReadUnpackedResponseAsync(reader, token);
 
-                commandWriter.WriteCommand(Command.Identify(ci));
-
-                Protocol.ReadUnpackedResponse(reader, out FrameType frameType, out byte[] data);
-
-                string json = Encoding.UTF8.GetString(data);
+                FrameType frameType = buffer.FrameType;
+                string json = Encoding.UTF8.GetString(buffer.Body.Span);
 
                 if (frameType == FrameType.Error)
                 {
@@ -634,17 +640,17 @@ namespace NsqSharp.Core
 
                 // check to see if the server was able to respond w/ capabilities
                 // i.e. it was a JSON response
-                if (data[0] != '{')
+                if (buffer.Body.Span[0] != '{')
                 {
                     return null;
                 }
 
-                string respJson = Encoding.UTF8.GetString(data);
+                string respJson = Encoding.UTF8.GetString(buffer.Body.Span);
                 logger?.Output(LogLevel.Debug, string.Format("IDENTIFY response: {0}", respJson));
 
                 IdentifyResponse? resp;
                 var serializer = new DataContractJsonSerializer(typeof(IdentifyResponse));
-                using (var memoryStream = new MemoryStream(data))
+                using (var memoryStream = buffer.Body.AsStream())
                 {
                     resp = (IdentifyResponse?)serializer.ReadObject(memoryStream);
                 }
@@ -654,7 +660,7 @@ namespace NsqSharp.Core
                 if (resp.TLSv1)
                 {
                     logger?.Output(LogLevel.Info, "upgrading to TLS");
-                    UpgradeTLS(_config.TlsConfig, reader, originalInstance);
+                    await UpgradeTlsAsync(_config.TlsConfig, reader, originalInstance, token);
                 }
 
                 // TODO: Deflate
@@ -696,7 +702,7 @@ namespace NsqSharp.Core
             }
         }
 
-        private static void UpgradeTLS(TlsConfig? tlsConfig, IReader reader, IConn originalInstance)
+        private static async Task UpgradeTlsAsync(TlsConfig? tlsConfig, IReader reader, IConn originalInstance, CancellationToken token)
         {
             ArgumentNullException.ThrowIfNull(tlsConfig, nameof(tlsConfig));
 
@@ -704,20 +710,23 @@ namespace NsqSharp.Core
             {
                 throw new ArgumentException("originalInstance must be of type TcpConn to upgrade TLS");
             }
-            _conn.UpgradeTLS(tlsConfig);
+            await _conn.UpgradeTlsAsync(tlsConfig);
 
-            Protocol.ReadUnpackedResponse(reader, out FrameType frameType, out byte[] body);
-            if (frameType != FrameType.Response || !body.SequenceEqual(Encoding.UTF8.GetBytes("OK")))
+            using var buffer = new NsqBufferContext();
+            await buffer.ReadUnpackedResponseAsync(reader, token);
+            
+            if (buffer.FrameType != FrameType.Response || !buffer.Body.Span.SequenceEqual(Encoding.UTF8.GetBytes("OK")))
                 throw new Exception("invalid response from TLS upgrade");
         }
 
-        public static void Auth(CoreNsqConnectionHandler handler, string secret, ILogger? logger)
+        public static async Task AuthAsync(CoreNsqConnectionHandler handler, string secret, ILogger? logger, CancellationToken token)
         {
             handler.WriteCommand(Command.Auth(secret));
-
-            Protocol.ReadUnpackedResponse(handler, out FrameType frameType, out byte[] data);
-
-            string json = Encoding.UTF8.GetString(data);
+            using var buffer = new NsqBufferContext();
+            await buffer.ReadUnpackedResponseAsync(handler, token);
+            
+            FrameType frameType = buffer.FrameType;
+            string json = Encoding.UTF8.GetString(buffer.Body.Span);
 
             if (frameType == FrameType.Error)
             {
@@ -726,7 +735,7 @@ namespace NsqSharp.Core
 
             AuthResponse? resp;
             var serializer = new DataContractJsonSerializer(typeof(AuthResponse));
-            using (var memoryStream = new MemoryStream(data))
+            using (var memoryStream = buffer.Body.AsStream())
             {
                 resp = (AuthResponse?)serializer.ReadObject(memoryStream);
             }
@@ -750,7 +759,7 @@ namespace NsqSharp.Core
         {
             // TODO
         }*/
-        private void RunReadLoop(CoreNsqConnectionHandler handler, RunningLoopContext readLoopCtx)
+        private async Task RunReadLoop(CoreNsqConnectionHandler handler, RunningLoopContext readLoopCtx)
         {
             try
             {
@@ -758,11 +767,10 @@ namespace NsqSharp.Core
                 var token = readLoopCtx.LoopTokenSource.Token;
                 while (!token.IsCancellationRequested)
                 {
-                    FrameType frameType;
-                    byte[] data;
+                    using var buffer = new NsqBufferContext();
                     try
                     {
-                        Protocol.ReadUnpackedResponse(handler, out frameType, out data);
+                        await buffer.ReadUnpackedResponseAsync(handler, token);
                     }
                     catch (Exception ex)
                     {
@@ -777,7 +785,8 @@ namespace NsqSharp.Core
                         break;
                     }
 
-                    if (frameType == FrameType.Response && HEARTBEAT_BYTES.SequenceEqual(data))
+                    FrameType frameType = buffer.FrameType;
+                    if (frameType == FrameType.Response && HEARTBEAT_BYTES.AsSpan().SequenceEqual(buffer.Body.Span))
                     {
                         _delegate.OnHeartbeat(this);
                         this.WriteCommandToChannel(Command.Nop());
@@ -787,13 +796,13 @@ namespace NsqSharp.Core
                     switch (frameType)
                     {
                         case FrameType.Response:
-                            _delegate.OnResponse(this, data);
+                            _delegate.OnResponse(this, buffer.Body);
                             break;
                         case FrameType.Message:
                             Message msg;
                             try
                             {
-                                msg = Message.DecodeMessage(data);
+                                msg = Message.DecodeMessage(buffer.Body);
                             }
                             catch (Exception ex)
                             {
@@ -812,9 +821,9 @@ namespace NsqSharp.Core
                             _delegate.OnMessage(this, msg);
                             break;
                         case FrameType.Error:
-                            string errMsg = Encoding.UTF8.GetString(data);
+                            string errMsg = Encoding.UTF8.GetString(buffer.Body.Span);
                             WriteLog(LogLevel.Error, string.Format("protocol error - {0}", errMsg));
-                            _delegate.OnError(this, data);
+                            _delegate.OnError(this, buffer.Body);
                             break;
                         default:
                             // TODO: what would 'err' be in this case?

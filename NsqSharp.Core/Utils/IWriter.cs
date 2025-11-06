@@ -9,6 +9,8 @@
         /// Write writes data to the connection.
         /// </summary>
         /// <returns>The number of bytes written.</returns>
-        int Write(byte[] b, int offset, int length);
+        //int Write(ReadOnlyMemory<byte> memory);
+
+        ValueTask WriteAsync(ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default);
     }
 }

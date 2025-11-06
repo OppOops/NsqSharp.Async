@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Text;
 using System.Text.RegularExpressions;
 using NsqSharp.Utils;
@@ -70,51 +71,51 @@ namespace NsqSharp.Core
 
             return _validTopicChannelNameRegex.IsMatch(name);
         }
+    }
 
-        /// <summary>
-        /// ReadResponse is a client-side utility function to read from the supplied Reader
-        /// according to the NSQ protocol spec
-        /// </summary>
-        /// <param name="r">The stream to read from</param>
-        /// <returns>The response as a byte array</returns>
-        public static byte[] ReadResponse(IReader r)
+    public class NsqBufferContext : IDisposable
+    {
+        public ReadOnlyMemory<byte> Body => Body.Slice(Offset, BodyLength);
+
+        private int Offset = 0;
+        private int BodyLength = 0;
+        private byte[] BodyBuffer = [];
+        public FrameType FrameType { get; private set; }
+        private bool HasRent = false;
+
+
+        private async ValueTask ReadResponseAsync(IReader r, CancellationToken token)
         {
             // message size
-            int msgSize = Binary.ReadInt32(r, Binary.BigEndian);
-            byte[] data = new byte[msgSize];
-            r.Read(data);
-            return data;
+            int msgSize = BodyLength = await Binary.ReadInt32Async(r, Binary.BigEndian);
+            byte[] data = BodyBuffer = ArrayPool<byte>.Shared.Rent(msgSize);
+            await r.ReadExactlyAsync(data.AsMemory(0, msgSize), token);
         }
 
-        /// <summary>
-        /// UnpackResponse is a client-side utility function that unpacks serialized data
-        /// according to NSQ protocol spec
-        /// /// </summary>
-        /// <param name="response">The response to unpack</param>
-        /// <param name="frameType">The frame type.</param>
-        /// <param name="body">The body.</param>
-        public static void UnpackResponse(byte[] response, out FrameType frameType, out byte[] body)
+        private void UnpackResponse()
         {
-            if (response.Length < 4)
-                throw new ArgumentException("length of response is too small", nameof(response));
+            if (BodyLength < 4)
+                throw new ArgumentException("length of response is too small", nameof(BodyLength));
 
-            frameType = (FrameType)Binary.BigEndian.Int32(response);
-            body = new byte[response.Length - 4];
-            Buffer.BlockCopy(response, 4, body, 0, body.Length);
+            FrameType = (FrameType)Binary.BigEndian.Int32(Body);
+            Offset = 4;
+            BodyLength -= 4;
         }
 
-        /// <summary>
-        /// ReadUnpackedResponse reads and parses data from the underlying
-        /// TCP connection according to the NSQ TCP protocol spec and
-        /// returns the frameType, data or error
-        /// </summary>
-        /// <param name="r">The reader to read from</param>
-        /// <param name="frameType">The frame type.</param>
-        /// <param name="body">The body.</param>
-        public static void ReadUnpackedResponse(IReader r, out FrameType frameType, out byte[] body)
+        public async ValueTask ReadUnpackedResponseAsync(IReader r, CancellationToken token = default)
         {
-            var resp = ReadResponse(r);
-            UnpackResponse(resp, out frameType, out body);
+            await ReadResponseAsync(r, token);
+            UnpackResponse();
+            HasRent = true;
+        }
+
+        public void Dispose()
+        {
+            if (HasRent)
+            {
+                ArrayPool<byte>.Shared.Return(BodyBuffer);
+                HasRent = false;
+            }
         }
     }
 }

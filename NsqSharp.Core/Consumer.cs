@@ -23,15 +23,6 @@ namespace NsqSharp
     ///     <para>When an exception is thrown the <see cref="Consumer"/> will automatically handle REQ'ing the message.</para>
     /// </summary>
 
-    public interface IMessageFailedLogger
-    {  /// <summary>
-       ///     Called when a <see cref="Message"/> has exceeded the <see cref="Consumer"/> specified
-       ///     <see cref="Config.MaxAttempts"/>.
-       /// </summary>
-       /// <param name="message">The failed message.</param>
-        void LogFailedMessage(IMessage message);
-    }
-
     /// <summary>
     ///     <para>Message processing interface for <see cref="Consumer" />.</para>
     ///     <para>When the <see cref="HandleMessage"/> method returns the <see cref="Consumer"/> will automatically handle
@@ -39,19 +30,21 @@ namespace NsqSharp
     ///     <para>When an exception is thrown the <see cref="Consumer"/> will automatically handle REQ'ing the message.</para>
     /// </summary>
     /// <seealso cref="Consumer.AddHandler"/>
-    public interface IHandler : IMessageFailedLogger
+    public interface IHandler
     {
+        /// <summary>
+        ///     Called when a <see cref="Message"/> has exceeded the <see cref="Consumer"/> specified
+        ///     <see cref="Config.MaxAttempts"/>.
+        /// </summary>
+        /// <param name="message">The failed message.</param>
+        void LogFailedMessage(IMessage message);
+        bool RunAsAsync { get; }
+
         /// <summary>Handles a message.</summary>
         /// <param name="message">The message.</param>
         void HandleMessage(IMessage message);
-    }
 
-    public interface IAsyncHandler : IMessageFailedLogger
-    {
-        /// <summary>Handles a message asynchronously.</summary>
-        /// <param name="message">The message.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        Task HandleMessageAsync(IMessage message);
+        Task HandleMessageAsync(IMessage message, CancellationToken token);
     }
 
     /// <summary>
@@ -104,7 +97,7 @@ namespace NsqSharp
     ///     messages consumed from the specified topic/channel.</para>
     ///     
     ///     <para>If configured, it will poll nsqlookupd instances and handle connection (and reconnection) to any discovered
-    ///     nsqds. See <see cref="ConnectToNsqLookupd"/>.</para>
+    ///     nsqds. See <see cref="ConnectToNsqLookupdAsync"/>.</para>
     /// </summary>
     /// <example>
     ///     <code>
@@ -152,8 +145,8 @@ namespace NsqSharp
     ///     </code>
     /// </example>
     /// <seealso cref="AddHandler"/>
-    /// <seealso cref="ConnectToNsqd"/>
-    /// <seealso cref="ConnectToNsqLookupd"/>
+    /// <seealso cref="ConnectToNsqdAsync"/>
+    /// <seealso cref="ConnectToNsqLookupdAsync"/>
     /// <seealso cref="Stop()"/>
     public sealed partial class Consumer : IConnDelegate
     {
@@ -356,7 +349,7 @@ namespace NsqSharp
         ///     that can filter the list of nsqd addresses returned by nsqlookupd.
         /// </summary>
         /// <param name="discoveryFilter">The discovery filter.</param>
-        /// <seealso cref="ConnectToNsqLookupd"/>
+        /// <seealso cref="ConnectToNsqLookupdAsync"/>
         public void SetBehaviorDelegate(IDiscoveryFilter discoveryFilter)
         {
             // TODO: can go-nsq take a DiscoveryFilter instead of interface{} ?
@@ -446,9 +439,10 @@ namespace NsqSharp
         /// <exception cref="ArgumentException">Thrown when <paramref name="addresses"/> is empty.
         /// </exception>
         /// <param name="addresses">The nsqlookupd address(es) to add.</param>
-        /// <seealso cref="ConnectToNsqd"/>
-        public void ConnectToNsqLookupd(params string[] addresses)
+        /// <seealso cref="ConnectToNsqdAsync"/>
+        public async Task ConnectToNsqLookupdAsync(IEnumerable<string> addressList, CancellationToken token = default)
         {
+            var addresses = addressList.ToArray();
             if (addresses.Length == 0)
                 throw new ArgumentException("addresses.Length = 0", nameof(addresses));
             addresses = [.. addresses.Distinct()];
@@ -476,7 +470,7 @@ namespace NsqSharp
             {
                 _mtx.ExitWriteLock();
             }
-            queryLookupd();
+            await queryLookupdAsync(token);
             _connectedFlag = 1;
             _ = RunLookupdLoop(this.ConsumerStopContext.Token);
         }
@@ -522,8 +516,8 @@ namespace NsqSharp
 
             var ticker = new Ticker(_config.LookupdPollInterval, token);
             var select = Select
-                        .CaseReceive(ticker.C, o => queryLookupd())
-                        .CaseReceive(_lookupdRecheckChan, o => queryLookupd());
+                        .CaseReceive(ticker.C, (o, token) => queryLookupdAsync(token))
+                        .CaseReceive(_lookupdRecheckChan, (o, token) => queryLookupdAsync(token));
             while (!token.IsCancellationRequested)
             {
                 await select.ExecuteAsync(token);
@@ -560,7 +554,7 @@ namespace NsqSharp
             return addr;
         }
 
-        private void queryLookupd()
+        private async Task queryLookupdAsync(CancellationToken token)
         {
             string endpoint = nextLookupdEndpoint();
 
@@ -643,7 +637,7 @@ namespace NsqSharp
             {
                 try
                 {
-                    ConnectToNsqd(addr);
+                    await ConnectToNsqdAsync([addr], token);
                 }
                 catch (Exception ex)
                 {
@@ -655,26 +649,27 @@ namespace NsqSharp
         /// <summary>
         ///     <para>Adds nsqd addresses to directly connect to for this <see cref="Consumer" /> instance.</para>
         ///     
-        ///     <para>It is recommended to use <see cref="ConnectToNsqLookupd"/> so that topics are discovered automatically.
+        ///     <para>It is recommended to use <see cref="ConnectToNsqLookupdAsync"/> so that topics are discovered automatically.
         ///     This method is useful when you want to connect to a single, local instance.</para>
         /// </summary>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="addresses"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException">Thrown when <paramref name="addresses"/> is empty.</exception>
         /// <param name="addresses">The nsqd address(es) to add.</param>
         /// <seealso cref="DisconnectFromNsqd"/>
-        /// <seealso cref="ConnectToNsqLookupd"/>
-        public void ConnectToNsqd(params string[] addresses)
+        /// <seealso cref="ConnectToNsqLookupdAsync"/>
+        public async Task ConnectToNsqdAsync(IEnumerable<string> addressList, CancellationToken token = default)
         {
+            var addresses = addressList.ToArray();
             if (addresses.Length == 0)
                 throw new ArgumentException("addresses.Length = 0", nameof(addresses));
 
             foreach (string address in addresses)
             {
-                connectToNsqd(address);
+                await connectToNsqd(address, token);
             }
         }
 
-        private void connectToNsqd(string addr)
+        private async Task connectToNsqd(string addr, CancellationToken token)
         {
             if (string.IsNullOrEmpty(addr))
                 throw new ArgumentNullException(nameof(addr));
@@ -691,7 +686,7 @@ namespace NsqSharp
 
             _connectedFlag = 1;
 
-            var cts = new CancellationTokenSource();
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             _mtx.EnterWriteLock();
             try
             {
@@ -733,14 +728,11 @@ namespace NsqSharp
             NsqContext nsqConnectionContext;
             try
             {
-                nsqConnectionBuilder.Dial(cts.Token)
-                    .ConfigureAwait(false)
-                    .GetAwaiter()
-                    .GetResult();
-                resp = nsqConnectionBuilder.HandShake(cmdWriter =>
+                await nsqConnectionBuilder.DialAsync(cts.Token);
+                resp = await nsqConnectionBuilder.HandShakeAsync(async(cmdWriter, token) =>
                 {
-                    cmdWriter.WriteCommand(Command.Subscribe(_topic, _channel));
-                });
+                    await cmdWriter.WriteCommandAsync(Command.Subscribe(_topic, _channel), token);
+                }, token);
                 nsqConnectionContext = nsqConnectionBuilder.GetNsqContext();
             }
             catch (Exception)
@@ -789,7 +781,7 @@ namespace NsqSharp
         ///     active connections.
         /// </exception>
         /// <param name="nsqdAddress">The nsqd address to disconnect from.</param>
-        /// <seealso cref="ConnectToNsqd"/>
+        /// <seealso cref="ConnectToNsqdAsync"/>
         public void DisconnectFromNsqd(string nsqdAddress)
         {
             if (string.IsNullOrEmpty(nsqdAddress))
@@ -853,9 +845,9 @@ namespace NsqSharp
             startStopContinueBackoff(BackoffSignal.ResumeFlag);
         }
 
-        void IConnDelegate.OnResponse(NsqContext c, byte[] data)
+        void IConnDelegate.OnResponse(NsqContext c, ReadOnlyMemory<byte> data)
         {
-            if (CLOSE_WAIT_BYTES.SequenceEqual(data))
+            if (CLOSE_WAIT_BYTES.AsSpan().SequenceEqual(data.Span))
             {
                 // server is ready for us to close (it ack'd our StartClose)
                 // we can assume we will not receive any more messages over this channel
@@ -865,7 +857,7 @@ namespace NsqSharp
             }
         }
 
-        void IConnDelegate.OnError(NsqContext c, byte[] data) { }
+        void IConnDelegate.OnError(NsqContext c, ReadOnlyMemory<byte> data) { }
 
         void IConnDelegate.OnHeartbeat(NsqContext c) { }
 
@@ -958,15 +950,16 @@ namespace NsqSharp
             {
                 // there are no lookupd and we still have this nsqd TCP address in our list...
                 // try to reconnect after a bit
-                GoFunc.Run(() =>
+                Task.Run(async() =>
                 {
-                    while (true)
+                    var token = ConsumerStopContext.Token;
+                    while (!token.IsCancellationRequested)
                     {
                         // TODO: PR go-nsq: do they need .Seconds() on their r.log string?
                         // https://github.com/nsqio/go-nsq/blob/667c739c212e55a5ddde2a33d4be2b9376d2c7e5/consumer.go#L731
                         log(LogLevel.Info, string.Format("({0}) re-connecting in {1:0.0000} seconds...", connAddr,
                             _config.LookupdPollInterval.TotalSeconds));
-                        Thread.Sleep(_config.LookupdPollInterval);
+                        await Task.Delay(_config.LookupdPollInterval, token);
                         if (_stopFlag == 1)
                         {
                             break;
@@ -981,7 +974,7 @@ namespace NsqSharp
                         }
                         try
                         {
-                            ConnectToNsqd(connAddr);
+                            await ConnectToNsqdAsync([connAddr], token);
                         }
                         catch (Exception ex)
                         {
@@ -991,7 +984,7 @@ namespace NsqSharp
                         }
                         break;
                     }
-                }, string.Format("onConnClose:reconnect: {0}/{1}", _topic, _channel));
+                });
             }
         }
 
@@ -1247,15 +1240,6 @@ namespace NsqSharp
 
             Interlocked.Add(ref _totalRdyCount, -c.RDY + count);
             c.SetRDY(count);
-            try
-            {
-                c.WriteCommandToChannel(Command.Ready(count));
-            }
-            catch (Exception ex)
-            {
-                log(LogLevel.Error, string.Format("({0}) error sending RDY {1} - {2}", c, count, ex));
-                throw;
-            }
         }
 
         private void redistributeRDY()
@@ -1410,7 +1394,7 @@ namespace NsqSharp
         /// </summary>
         public void Stop()
         {
-            StopAsync().Wait();
+            StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
         /// <summary>Asynchronously initiates a graceful stop of the <see cref="Consumer" /> (permanent).</summary>
@@ -1452,19 +1436,19 @@ namespace NsqSharp
         /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="threads"/> is less than 1.
         /// </exception>
         /// <exception cref="Exception">
-        ///     Thrown when <see cref="ConnectToNsqd"/> or <see cref="ConnectToNsqLookupd"/> has been called before invoking
+        ///     Thrown when <see cref="ConnectToNsqdAsync"/> or <see cref="ConnectToNsqLookupdAsync"/> has been called before invoking
         ///     <see cref="AddHandler"/>.
         /// </exception>
         /// <param name="handler">The handler for the topic/channel of this <see cref="Consumer"/> instance.</param>
         /// <param name="threads">The number of threads used to handle incoming messages for this
         ///     <see cref="Consumer" /> (default = 1).
         /// </param>
-        public void AddHandler(IHandler handler, int threads = 1)
+        public void AddHandler(IHandler handler, int threads = 1, CancellationToken token = default)
         {
             if (threads <= 0)
                 throw new ArgumentOutOfRangeException(nameof(threads), threads, "threads must be > 0");
 
-            addConcurrentHandlers(handler, threads);
+            addConcurrentHandlers(handler, threads, token);
         }
 
         /// <summary>
@@ -1476,7 +1460,7 @@ namespace NsqSharp
         ///
         /// (see Handler or HandlerFunc for details on implementing this interface)
         /// </summary>
-        private void addConcurrentHandlers(IHandler handler, int concurrency)
+        private void addConcurrentHandlers(IHandler handler, int concurrency, CancellationToken token)
         {
             if (concurrency <= 0)
                 throw new ArgumentOutOfRangeException(nameof(concurrency), concurrency, "concurrency must be > 0");
@@ -1489,18 +1473,18 @@ namespace NsqSharp
             Interlocked.Add(ref _runningHandlers, concurrency);
             for (int i = 0; i < concurrency; i++)
             {
-                GoFunc.Run(() => handlerLoop(handler),
-                    string.Format("handlerLoop({0}/{1}): {2}/{3}", i + 1, concurrency, _topic, _channel));
+                _ = handlerLoop(handler, token);
             }
         }
 
-        private void handlerLoop(IHandler handler)
+        private async Task handlerLoop(IHandler handler, CancellationToken token)
         {
             log(LogLevel.Debug, "starting Handler");
-
-            while (true)
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(ConsumerStopContext.Token, token);
+            token = cts.Token;
+            while (!token.IsCancellationRequested)
             {
-                var ok = _incomingMessages.Reader.WaitToReadAsync().AsTask().Result;
+                var ok = await _incomingMessages.Reader.WaitToReadAsync();
                 if (!ok)
                 {
                     break;
@@ -1522,7 +1506,10 @@ namespace NsqSharp
                 try
                 {
                     message.MaxAttempts = _config.MaxAttempts;
-                    handler.HandleMessage(message);
+                    if(handler.RunAsAsync)
+                        await handler.HandleMessageAsync(message, token);
+                    else
+                        handler.HandleMessage(message);
                 }
                 catch (Exception ex)
                 {

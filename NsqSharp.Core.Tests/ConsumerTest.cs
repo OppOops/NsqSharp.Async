@@ -126,7 +126,7 @@ namespace NsqSharp.Tests
             });
         }*/
 
-        private void consumerTest(Action<Config> configSetter)
+        private async Task consumerTest(Action<Config> configSetter)
         {
             var config = new Config();
             // so that the test can simulate reaching max requeues and a call to LogFailedMessage
@@ -163,7 +163,7 @@ namespace NsqSharp.Tests
                 h.messagesSent = 4;
 
                 const string addr = "127.0.0.1:4150";
-                q.ConnectToNsqd(addr);
+                await q.ConnectToNsqdAsync([addr]);
 
                 var stats = q.GetStats();
                 Assert.AreNotEqual(0, stats.Connections, "stats report 0 connections (should be > 0)");
@@ -176,7 +176,7 @@ namespace NsqSharp.Tests
                 Assert.Throws<ErrNotConnected>(() => q.DisconnectFromNsqd("1.2.3.4:4150"),
                     "should not be able to disconnect from an unknown nsqd");
 
-                Assert.Throws<OperationCanceledException>(() => q.ConnectToNsqd("1.2.3.4:4150"),
+                Assert.Throws<OperationCanceledException>(() => q.ConnectToNsqdAsync(["1.2.3.4:4150"]).Wait(),
                     "should not be able to connect to non-existent nsqd");
 
                 // should be able to disconnect from an nsqd
@@ -245,10 +245,12 @@ namespace NsqSharp.Tests
 
             public Task Fin => CompletionSource.Task;
 
+            public bool RunAsAsync => false;
+
             public void LogFailedMessage(IMessage message)
             {
                 messagesFailed++;
-                q.StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+                q.Stop();
                 CompletionSource.TrySetResult(true);
             }
 
@@ -276,6 +278,11 @@ namespace NsqSharp.Tests
                     throw new Exception(string.Format("message 'action' was not correct: {0} {1}", msg, body));
                 }
                 messagesReceived++;
+            }
+
+            public Task HandleMessageAsync(IMessage message, CancellationToken token)
+            {
+                throw new NotImplementedException();
             }
         }
 

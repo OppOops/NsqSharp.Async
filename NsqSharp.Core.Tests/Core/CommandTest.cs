@@ -32,12 +32,18 @@ namespace NsqSharp.Tests.Core
 
         private class MemoryStreamWriter : IWriter
         {
-            private readonly MemoryStream _memoryStream = new MemoryStream();
+            private readonly MemoryStream _memoryStream = new();
 
-            public int Write(byte[] b, int offset, int length)
+            public int Write(ReadOnlyMemory<byte> memory)
             {
-                _memoryStream.Write(b, offset, length);
-                return length;
+                _memoryStream.Write(memory.Span);
+                return memory.Length;
+            }
+
+            public ValueTask WriteAsync(ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default)
+            {
+                _memoryStream.Write(memory.Span);
+                return ValueTask.CompletedTask;
             }
         }
     }

@@ -32,9 +32,9 @@ namespace NsqSharp.Tests
 
         [Test]
         [Ignore("Long Running Test")]
-        public void TestRdyRedistribution()
+        public async Task TestRdyRedistribution()
         {
-            var results = TestRdyRedistribution(
+            var results = await TestRdyRedistribution(
                 rdyRedistributeOnIdle: true,
                 maxInFlight: 4,
                 rdyRedistributeInterval: TimeSpan.FromSeconds(5),
@@ -64,9 +64,9 @@ namespace NsqSharp.Tests
         }
 
         [Test]
-        public void TestRdyRedistributionMaxInFlight1()
+        public async Task TestRdyRedistributionMaxInFlight1()
         {
-            var results = TestRdyRedistribution(
+            var results = await TestRdyRedistribution(
                 rdyRedistributeOnIdle: true,
                 maxInFlight: 1,
                 rdyRedistributeInterval: TimeSpan.FromSeconds(5),
@@ -86,7 +86,7 @@ namespace NsqSharp.Tests
             Assert.AreEqual(30, p2.Count, "p2.Count");
         }
 
-        private static List<TestResults> TestRdyRedistribution(
+        private static async Task<List<TestResults>> TestRdyRedistribution(
             bool rdyRedistributeOnIdle,
             int maxInFlight,
             TimeSpan rdyRedistributeInterval,
@@ -111,7 +111,7 @@ namespace NsqSharp.Tests
                 if (startWithInitialMessageOnIdleNsqd)
                 {
                     Console.WriteLine("[{0}] Sending initial message on 4150...", DateTime.Now.Formatted());
-                    p1.Publish(topicName, "initial");
+                    await p1.PublishAsync(topicName, "initial");
                 }
 
                 Console.WriteLine("[{0}] Sending messages on 5150...", DateTime.Now.Formatted());
@@ -119,7 +119,7 @@ namespace NsqSharp.Tests
                 Producer p2 = new Producer("127.0.0.1:5150");
                 for (int i = 0; i < numberOfMessages; i++)
                 {
-                    p2.Publish(topicName, i.ToString());
+                    await p2.PublishAsync(topicName, i.ToString());
                 }
 
                 Consumer c = new Consumer(
@@ -136,9 +136,9 @@ namespace NsqSharp.Tests
                 );
                 var messageHandler = new MessageHandler(handlerSleepTime);
                 c.AddHandler(messageHandler, threads: maxInFlight);
-                c.ConnectToNsqLookupd("127.0.0.1:4161");
+                await c.ConnectToNsqLookupdAsync(["127.0.0.1:4161"]);
 
-                Thread.Sleep(sleepBeforeIdlePublish);
+                await Task.Delay(sleepBeforeIdlePublish);
 
                 Console.WriteLine("[{0}] Sending messages on 4150...", DateTime.Now.Formatted());
 
@@ -147,7 +147,7 @@ namespace NsqSharp.Tests
                     p1.Publish(topicName, string.Format("{0} - snuck in!", i));
                 }
 
-                Thread.Sleep(testDuration - sleepBeforeIdlePublish);
+                await Task.Delay(testDuration - sleepBeforeIdlePublish);
 
                 Console.WriteLine("[{0}] Stopping...", DateTime.Now.Formatted());
 
@@ -171,6 +171,8 @@ namespace NsqSharp.Tests
             private readonly TimeSpan _sleepTime;
             private readonly List<TestResults> _testResults;
             private readonly object _testResultsLocker = new object();
+
+            public bool RunAsAsync => false;
 
             public MessageHandler(TimeSpan sleepTime)
             {
@@ -205,6 +207,11 @@ namespace NsqSharp.Tests
             public List<TestResults> GetTestResults()
             {
                 return _testResults;
+            }
+
+            public Task HandleMessageAsync(IMessage message, CancellationToken token)
+            {
+                throw new NotImplementedException();
             }
         }
 

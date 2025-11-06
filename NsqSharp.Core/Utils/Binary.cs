@@ -13,20 +13,10 @@ namespace NsqSharp.Utils
         /// </summary>
         public static readonly BigEndian BigEndian = new BigEndian();
 
-        /// <summary>
-        /// Read reads structured binary data from <paramref name="r"/>.
-        /// Bytes read from <paramref name="r"/> are decoded using the
-        /// specified byte <paramref name="order"/> and written to successive
-        /// fields of the data.
-        /// </summary>
-        /// <param name="r">The reader.</param>
-        /// <param name="order">The byte order.</param>
-        public static int ReadInt32(IReader r, IByteOrder order)
+        public static async ValueTask<int> ReadInt32Async(IReader r, IByteOrder order)
         {
-            // NOTE: Departing from "binary.Read", don't want to box/unbox for this low-level call
-
             var buf = new byte[4];
-            r.Read(buf);
+            await r.ReadExactlyAsync(buf);
             return order.Int32(buf);
         }
     }
@@ -77,6 +67,14 @@ namespace NsqSharp.Utils
             b[3] = (byte)(v & 0xFF);
         }
 
+        public void PutUint32(Memory<byte> b, UInt32 v)
+        {
+            b.Span[0] = (byte)(v >> 24);
+            b.Span[1] = (byte)((v >> 16) & 0xFF);
+            b.Span[2] = (byte)((v >> 8) & 0xFF);
+            b.Span[3] = (byte)(v & 0xFF);
+        }
+
         /// <summary>
         /// Writes a <see cref="T:System.UInt32"/> using big endian ordering.
         /// </summary>
@@ -118,6 +116,14 @@ namespace NsqSharp.Utils
             b[offset + 3] = (byte)(v & 0xFF);
         }
 
+        public void PutUint32(Memory<byte> b, Int32 v, int offset)
+        {
+            b.Span[offset] = (byte)(v >> 24);
+            b.Span[offset + 1] = (byte)((v >> 16) & 0xFF);
+            b.Span[offset + 2] = (byte)((v >> 8) & 0xFF);
+            b.Span[offset + 3] = (byte)(v & 0xFF);
+        }
+
         /// <summary>
         /// Fills a byte array with a <see cref="T:System.UInt16"/> using big endian ordering.
         /// </summary>
@@ -146,6 +152,17 @@ namespace NsqSharp.Utils
                 (b[1] << 16) |
                 (b[2] << 8) |
                 (b[3]);
+
+            return value;
+        }
+
+        public Int32 Int32(ReadOnlyMemory<byte> b)
+        {
+            int value =
+                (b.Span[0] << 24) |
+                (b.Span[1] << 16) |
+                (b.Span[2] << 8) |
+                (b.Span[3]);
 
             return value;
         }

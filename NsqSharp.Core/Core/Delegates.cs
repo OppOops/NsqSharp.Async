@@ -67,13 +67,13 @@ namespace NsqSharp.Core
         /// OnResponse is called when the connection
         /// receives a FrameTypeResponse from nsqd
         /// </summary>
-        void OnResponse(NsqContext c, byte[] data);
+        void OnResponse(NsqContext c, ReadOnlyMemory<byte> data);
 
         /// <summary>
         /// OnError is called when the connection
         /// receives a FrameTypeError from nsqd
         /// </summary>
-        void OnError(NsqContext c, byte[] data);
+        void OnError(NsqContext c, ReadOnlyMemory<byte> data);
 
         /// <summary>
         /// OnMessage is called when the connection
